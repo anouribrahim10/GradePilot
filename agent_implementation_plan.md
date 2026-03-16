@@ -1,35 +1,33 @@
 # GradePilot: Autonomous Agent Implementation Plan
 
 ## 1. Executive Summary
-GradePilot is a true **autonomous academic planning agent**. Unlike a simple "AI wrapper" that only responds to user prompts, GradePilot operates proactively. Once given a student's context, it continuously monitors deadlines, autonomously researches missing information, utilizes tools (like calendars and web scrapers), and dynamically adjusts study plans in the background without requiring constant user hand-holding.
+GradePilot is an **autonomous academic planning agent**. Once given a student's context, it continuously monitors deadlines, reasons over course materials, uses tools (calendar, storage, web search), and dynamically adjusts study plans in the background.
 
-## 2. Recommended Tech Stack
-Given the heavy reliance on AI and document processing, this stack is highly recommended:
+## 2. Tech Stack (Aligned with Architecture)
 
-### Frontend (Website)
-*   **Framework:** **Next.js (React)** - Excellent for routing, SEO, and fast page loads, making it easy to grow from a simple website into a full web app.
-    *   **Styling:** **Vanilla CSS** with modern design principles (glassmorphism, vibrant gradients, micro-animations) to make the platform feel intuitive and responsive to agent actions. 
-*   **State Management:** **Zustand** or React Context for managing user data across the app.
+### Frontend
+*   **MVP UI:** **Streamlit** for rapid iteration and internal demos.
+*   **Production UI:** **React + Vite** for the main student dashboard and admin views.
 
-### Backend (Agent Logic & Infrastructure)
-*   **Agent Framework:** **LangChain**, **LlamaIndex**, or a custom ReAct (Reasoning and Acting) loop in Python. This is crucial for giving the LLM the ability to decide *when* to use tools.
-*   **Background Execution:** **Celery + Redis** or **RQ**. A true agent needs to run asynchronously and proactively (e.g., waking up every night to check the schedule and re-plan), not just when an HTTP request is made.
-*   **API Framework:** **Python (FastAPI)** - Python is the industry standard for AI, OCR, and data processing. FastAPI will serve as the bridge between the frontend and the background agent.
-*   **Databases:**
-    *   **Relational:** **PostgreSQL** (via Supabase or Neon) - For standard app data (users, configured courses, hard deadlines).
-    *   **Vector Database (Memory):** **pgvector** (Postgres extension), **Pinecone**, or **ChromaDB. This gives the agent *long-term memory*, allowing it to remember past study habits, user preferences, and semantic relationships between course materials over the entire semester.
-*   **Storage:** **AWS S3** or **Google Cloud Storage** - For securely storing user-uploaded PDFs, notes, and images.
+### Backend (Agent Logic & APIs)
+*   **API Framework:** **FastAPI (Python 3.12)** for all HTTP endpoints and integration with the agent loop.
+*   **Agent Framework:** **LangChain + LangGraph** for orchestration and stateful agent behaviour (planning, tool selection, re-scheduling).
+*   **Background Execution:** Background workers (e.g. Celery/Redis or async tasks) for long-running planning and nightly re-planning jobs.
+*   **Database:**
+    *   **Relational:** **Supabase (PostgreSQL)** for users, courses, tasks, and schedules.
+    *   **Vector Store:** **pgvector on Supabase Postgres** (or an equivalent Postgres vector extension) for embeddings and long-term semantic memory.
+*   **Storage:** **Supabase storage** and/or **Google Cloud Storage** for user-uploaded PDFs, notes, and images.
 
-### Agentic Tools (APIs the Agent Controls)
-*   **AI Engine:** **Google Gemini API** (Specifically Gemini 1.5 Pro) - The "brain" of the agent. Its massive context window and native multimodal capabilities allow it to ingest entire textbooks, reason over them, and decide which tools to call.
-*   **Web Search & Scraping Tools:** **Tavily Search API**, **Firecrawl**, or **Browserbase**. The agent decides *when* a topic in the notes is insufficiently explained, searches the web, reads the results, and incorporates the findings into the study plan.
-*   **Calendar Integration:** **Google Calendar API** - The agent operates directly on the user's calendar, pushing new blocks and deleting old ones as it reacts to changes.
-*   **Communication Tool:** **Resend** or **Twilio** - The agent can proactively decide to email or text the user if it detects they are falling behind schedule.
+### Agent Tools (APIs the Agent Controls)
+*   **LLM Engine:** **Google Gemini 1.5 Pro via LangChain** (configured once as `ChatGoogleGenerativeAI`; all chains and graphs call Gemini through LangChain, not directly).
+*   **Web Search / Scraping:** Optional search tools (e.g. Tavily or equivalent) that the agent can invoke when course materials are insufficient.
+*   **Calendar Integration:** **Google Calendar API** – the agent creates, updates, and deletes events on the student’s calendar.
+*   **Communication:** Optional email/SMS provider (e.g. Resend or Twilio) for proactive notifications.
 
 ---
 
-## 3. Feature Recommendations ("Blah Blah" Features)
-To make GradePilot truly stand out for your project, consider adding these features to your roadmap:
+## 3. Feature Recommendations
+Potential roadmap features:
 
 1.  **Syllabus Auto-Parser:** Students just upload their course syllabus PDF at the start of the semester. GradePilot automatically extracts all key dates, grading weightings, and textbook requirements, instantly populating their calendar.
 2.  **Spaced Repetition Flashcards:** Automatically convert PDF notes into interactive flashcards (like Anki or Quizlet) that adapt to what the student gets wrong.
@@ -44,10 +42,10 @@ To make GradePilot truly stand out for your project, consider adding these featu
 
 ### Phase 1: Blueprint & Infrastructure Foundation (Weeks 1-3)
 *   **Actionable Steps:**
-    *   Create UI/UX wireframes emphasizing the "Agent Activity" feed (showing the user what the agent is thinking/doing in the background).
-    *   Initialize the Next.js frontend and FastAPI backend.
-    *   Set up PostgreSQL for structured data and configure `pgvector` for the agent's memory.
-    *   Set up the **Celery/Redis worker queue** so the agent can run long, multi-step thought processes continuously in the background.
+    *   Create UI/UX wireframes, including an "Agent Activity" feed that surfaces background actions.
+    *   Initialize the Streamlit MVP and FastAPI backend.
+    *   Set up Supabase (PostgreSQL) and configure `pgvector` for the agent's memory.
+    *   Set up a background worker queue (e.g. Celery/Redis) or scheduled async tasks for long-running jobs.
 
 ### Phase 2: User Context & State Initialization (Weeks 4-5)
 *   **Actionable Steps:**
@@ -57,7 +55,7 @@ To make GradePilot truly stand out for your project, consider adding these featu
 
 ### Phase 3: Building the Autonomous Agent Loop (Weeks 6-8)
 *   **Actionable Steps:**
-    *   Implement the core ReAct (Reasoning and Acting) loop using LangChain/LlamaIndex or raw Gemini API tool calling.
+    *   Implement the core planning and tool-using loop using **LangChain + LangGraph** (Gemini accessed only via LangChain).
     *   **Give the Agent Tools:** Write simple Python functions the LLM can trigger (e.g., `search_web_for_topic(query)`, `create_calendar_event(time, task)`, `read_document_chunk(topic_id)`).
     *   Develop the **Planning System:** The agent surveys the upcoming month, identifies gaps in knowledge, and formulates a step-by-step preparation plan.
 
