@@ -1,0 +1,56 @@
+[project]
+name = "gradepilot"
+version = "0.1.0"
+description = "GradePilot – autonomous academic planning agent"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "GradePilot Team" }]
+
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "pydantic",
+  "langchain",
+  "langgraph",
+  "google-generativeai",
+
+  "sqlalchemy",
+  "psycopg[binary]",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff",
+  "black",
+  "mypy",
+  "pytest",
+  "pytest-asyncio",
+  "pytest-mock",
+  "pytest-cov",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
