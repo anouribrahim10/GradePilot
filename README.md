@@ -39,10 +39,6 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-- **Configuration**
-  - All configuration is provided via environment variables (see **Configuration and Secrets** below).
-  - At minimum, ensure any required API keys and database URLs are exported in your shell or stored in a local `.env` file loaded by your tooling.
-
 - **Run the API locally**
 
 ```bash
