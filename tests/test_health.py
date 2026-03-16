@@ -13,3 +13,9 @@ def test_health_ok() -> None:
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {"status": "ok"}
 
+
+def test_root_ok() -> None:
+    response = client.get("/")
+    assert response.status_code == HTTPStatus.OK
+    assert response.json() == {"message": "GradePilot API"}
+
