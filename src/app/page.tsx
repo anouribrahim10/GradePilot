@@ -9,9 +9,7 @@ import {
   Clock,
   FileUp,
   LayoutDashboard,
-  MessageSquare,
   RefreshCw,
-  SendHorizontal,
   Settings,
   Sparkles,
   Play
