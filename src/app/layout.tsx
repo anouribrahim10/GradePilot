@@ -1,0 +1,24 @@
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+
+const inter = Inter({ subsets: ['latin'] });
+
+export const metadata: Metadata = {
+  title: 'GradePilot | Autonomous Academic Planning Agent',
+  description: 'Prototypical UI for an autonomous academic planning agent',
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en" className="dark">
+      <body className={`${inter.className} antialiased bg-[#0B0F2A] text-[#F8FAFC] selection:bg-[#00F5D4]/30`}>
+        {children}
+      </body>
+    </html>
+  );
+}
