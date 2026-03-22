@@ -2,22 +2,23 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  Bot, 
-  Calendar, 
-  CheckCircle2, 
-  Clock, 
-  FileUp, 
-  LayoutDashboard, 
-  MessageSquare, 
-  RefreshCw, 
-  SendHorizontal, 
-  Settings, 
+import {
+  Bot,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  FileUp,
+  LayoutDashboard,
+  MessageSquare,
+  RefreshCw,
+  SendHorizontal,
+  Settings,
   Sparkles,
   Play
 } from 'lucide-react';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import Chatbot from '../components/Chatbot';
 
 // --- Utility for tailwind classes ---
 function cn(...inputs: (string | undefined | null | false)[]) {
@@ -58,15 +59,14 @@ const CLASSES = [
 ];
 
 const LOGS = [
-  { time: '10:05 AM', text: 'Extracted 3 deadlines from Biology Syllabus PDF', icon: <FileUp size={14}/> },
-  { time: '11:30 AM', text: 'Cross-referenced deadlines with Google Calendar', icon: <RefreshCw size={14}/> },
-  { time: '1:15 PM', text: 'Drafted study plan for CS 101 Midterm', icon: <Sparkles size={14}/> },
-  { time: '2:00 PM', text: "Rearranged CS 101 study schedule because you missed yesterday's session.", icon: <Calendar size={14}/>, alert: true },
-  { time: 'Just now', text: 'Waiting for math lecture notes to upload.', icon: <Bot size={14}/>, active: true },
+  { time: '10:05 AM', text: 'Extracted 3 deadlines from Biology Syllabus PDF', icon: <FileUp size={14} /> },
+  { time: '11:30 AM', text: 'Cross-referenced deadlines with Google Calendar', icon: <RefreshCw size={14} /> },
+  { time: '1:15 PM', text: 'Drafted study plan for CS 101 Midterm', icon: <Sparkles size={14} /> },
+  { time: '2:00 PM', text: "Rearranged CS 101 study schedule because you missed yesterday's session.", icon: <Calendar size={14} />, alert: true },
+  { time: 'Just now', text: 'Waiting for math lecture notes to upload.', icon: <Bot size={14} />, active: true },
 ];
 
 export default function GradePilotDashboard() {
-  const [chatInput, setChatInput] = useState('');
   const [syncing, setSyncing] = useState(false);
 
   const handleSync = () => {
@@ -75,7 +75,7 @@ export default function GradePilotDashboard() {
   };
 
   return (
-    <div 
+    <div
       className="relative min-h-screen w-full overflow-hidden text-[#F8FAFC] font-sans selection:bg-[#00F5D4]/30"
       style={{ background: 'radial-gradient(circle at 50% 30%, #141B3A 0%, #0B0F2A 70%)' }}
     >
@@ -85,11 +85,11 @@ export default function GradePilotDashboard() {
 
       {/* Main Layout Container */}
       <div className="relative z-10 flex h-screen w-full max-w-[1800px] mx-auto p-4 gap-6">
-        
+
         {/* =========================================================
             LEFT SIDEBAR (Input & Communication)
         ========================================================= */}
-        <motion.aside 
+        <motion.aside
           initial={{ opacity: 0, x: -50 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, ease: "easeOut" }}
@@ -109,7 +109,7 @@ export default function GradePilotDashboard() {
           </div>
 
           {/* Sync GCal Button */}
-          <button 
+          <button
             onClick={handleSync}
             className="group relative flex items-center justify-between w-full p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all overflow-hidden"
           >
@@ -145,32 +145,13 @@ export default function GradePilotDashboard() {
           </div>
 
           {/* Chat Interface */}
-          <div className="mt-auto pt-6 flex flex-col gap-3">
-            <div className="flex items-center gap-2 mb-1">
-              <MessageSquare className="w-4 h-4 text-[#6D4AFF]" />
-              <span className="text-sm font-semibold text-[#F8FAFC]">Agent Command</span>
-            </div>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Ask me anything..."
-                  className="w-full bg-black/30 border border-white/10 rounded-xl py-3 pl-4 pr-10 text-sm focus:outline-none focus:ring-1 focus:ring-[#00F5D4] focus:border-[#00F5D4] transition-all placeholder:text-[#94A3B8]"
-                />
-                <button className="absolute right-2 top-1/2 -translate-y-1/2 p-2 hover:bg-white/10 rounded-lg text-[#94A3B8] hover:text-[#00F5D4] transition-colors">
-                  <SendHorizontal className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
+          <Chatbot />
         </motion.aside>
 
         {/* =========================================================
             MAIN CONTENT (Structured Output)
         ========================================================= */}
-        <motion.main 
+        <motion.main
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.1, ease: "easeOut" }}
@@ -204,17 +185,17 @@ export default function GradePilotDashboard() {
               >
                 {/* Glow behind the card header */}
                 <div className={cn("absolute top-0 left-0 right-0 h-32 bg-gradient-to-b opacity-40 pointer-events-none", cls.color)} />
-                
+
                 <h3 className="text-xl font-semibold mb-4 z-10 text-[#F8FAFC]">{cls.course}</h3>
-                
+
                 <div className="flex flex-col gap-3 mb-6 z-10 flex-1">
                   {cls.tasks.map(task => (
                     <div key={task.id} className="flex items-start gap-3 group/task">
                       <div className="mt-0.5 relative flex-shrink-0">
                         <div className={cn(
                           "w-5 h-5 rounded-md border flex items-center justify-center transition-colors cursor-pointer",
-                          task.done 
-                            ? "bg-[#22C55E] border-[#22C55E] text-[#0B0F2A]" 
+                          task.done
+                            ? "bg-[#22C55E] border-[#22C55E] text-[#0B0F2A]"
                             : "border-[#94A3B8]/50 text-transparent hover:border-[#00F5D4]"
                         )}>
                           <CheckCircle2 className="w-3.5 h-3.5" />
@@ -222,7 +203,7 @@ export default function GradePilotDashboard() {
                       </div>
                       <div className="flex flex-col">
                         <p className={cn(
-                          "text-sm font-medium transition-colors", 
+                          "text-sm font-medium transition-colors",
                           task.done ? "text-[#94A3B8] line-through" : "text-[#F8FAFC]"
                         )}>
                           {task.text}
@@ -238,7 +219,7 @@ export default function GradePilotDashboard() {
                 </div>
 
                 <div className="z-10 mt-auto">
-                  <button 
+                  <button
                     className="w-full py-3.5 rounded-xl font-bold text-sm text-[#0B0F2A] shadow-[0_4px_20px_rgba(0,245,212,0.2)] hover:shadow-[0_4px_25px_rgba(0,245,212,0.4)] transition-all flex items-center justify-center gap-2 group/btn"
                     style={{ background: 'linear-gradient(135deg, #6D4AFF, #00F5D4)' }}
                   >
@@ -248,7 +229,7 @@ export default function GradePilotDashboard() {
                 </div>
               </motion.div>
             ))}
-            
+
             {/* Empty State / Add more */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -269,7 +250,7 @@ export default function GradePilotDashboard() {
         {/* =========================================================
             RIGHT SIDEBAR (Autonomous Agent Activity)
         ========================================================= */}
-        <motion.aside 
+        <motion.aside
           initial={{ opacity: 0, x: 50 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
@@ -286,11 +267,11 @@ export default function GradePilotDashboard() {
           {/* Scrolling Feed */}
           <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 relative">
             <div className="absolute left-[11px] top-4 bottom-4 w-px bg-white/5" />
-            
+
             <div className="flex flex-col gap-6 pt-4">
               {LOGS.map((log, i) => (
-                <motion.div 
-                  key={i} 
+                <motion.div
+                  key={i}
                   initial={{ opacity: 0, x: 10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.4 + i * 0.1 }}
@@ -298,8 +279,8 @@ export default function GradePilotDashboard() {
                 >
                   <div className={cn(
                     "relative z-10 w-6 h-6 rounded-full flex items-center justify-center shrink-0 border-2 mt-0.5",
-                    log.alert 
-                      ? "bg-[#FF4D6D]/20 border-[#FF4D6D] text-[#FF4D6D]" 
+                    log.alert
+                      ? "bg-[#FF4D6D]/20 border-[#FF4D6D] text-[#FF4D6D]"
                       : log.active
                         ? "bg-[#00F5D4]/20 border-[#00F5D4] text-[#00F5D4] shadow-[0_0_10px_rgba(0,245,212,0.3)]"
                         : "bg-[#0B0F2A] border-[#94A3B8]/30 text-[#94A3B8]"
@@ -326,7 +307,7 @@ export default function GradePilotDashboard() {
               <h3 className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wider">Upcoming Blocks</h3>
               <Settings className="w-3.5 h-3.5 text-[#94A3B8] cursor-pointer hover:text-[#00F5D4] transition-colors" />
             </div>
-            
+
             <div className="flex flex-col gap-2">
               {[
                 { time: '3:00 PM', title: 'Deep Work: CS 101', dur: '2h', color: 'bg-[#00F5D4]/10 text-[#00F5D4] border-[#00F5D4]/20' },
@@ -347,7 +328,8 @@ export default function GradePilotDashboard() {
       </div>
 
       {/* Global generic styles for glassmorphism shared classes */}
-      <style dangerouslySetInnerHTML={{__html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         .glass-panel {
           background: #141B3A;
           backdrop-filter: blur(24px);
