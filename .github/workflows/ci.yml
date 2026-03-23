@@ -17,7 +17,7 @@ jobs:
       - run: pip install uv ruff black mypy && uv sync
       - run: ruff check . && black --check . && mypy .
 
-  test:
+  test-backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +25,24 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
-      - run: pip install pytest pytest-asyncio pytest-mock pytest-cov
+      - run: pip install -e ".[dev]"
       - run: pytest --cov=app --cov-fail-under=80
 
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+      - name: Install Playwright Browsers
+        working-directory: ./frontend
+        run: npx playwright install --with-deps
+      - name: Build and Test E2E
+        working-directory: ./frontend
+        run: |
+          npm run build
+          npx playwright test
