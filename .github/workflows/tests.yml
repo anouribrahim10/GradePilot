@@ -24,9 +24,36 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest pytest-cov
 
-      - name: Run backend tests
+      - name: Run unit tests (health endpoints)
         run: |
-          pytest --maxfail=1 --disable-warnings --cov=. --cov-report=term || echo "No backend tests found yet"
+          pytest \
+            tests/test_health.py \
+            --maxfail=1 \
+            --disable-warnings \
+            --cov=app \
+            --cov-report=term \
+            --cov-append
+
+      - name: Run integration tests (route-service interaction)
+        run: |
+          pytest \
+            tests/test_health_integration.py \
+            --maxfail=1 \
+            --disable-warnings \
+            --cov=app \
+            --cov-report=term \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov
+          if-no-files-found: warn
 
   frontend-tests:
     runs-on: ubuntu-latest
@@ -42,8 +69,20 @@ jobs:
 
       - name: Install frontend dependencies
         run: |
-          if [ -f package.json ]; then npm install; else echo "No package.json found yet"; fi
+          cd frontend
+          npm ci
 
-      - name: Run frontend tests
+      - name: Build frontend
         run: |
-          if [ -f package.json ]; then npm test -- --watch=false --coverage || echo "No frontend tests found yet"; else echo "Skipping frontend tests"; fi
+          cd frontend
+          npm run build
+
+      - name: Install Playwright browsers
+        run: |
+          cd frontend
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright end-to-end test
+        run: |
+          cd frontend
+          npx playwright test --reporter=line
