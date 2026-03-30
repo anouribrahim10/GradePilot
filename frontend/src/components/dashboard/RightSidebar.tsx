@@ -2,7 +2,7 @@ import React from "react";
 
 export default function RightSidebar() {
   return (
-    <aside className="h-full w-[300px] bg-[#161825]/95 border border-white/5 p-6 pb-2 flex flex-col rounded-3xl shadow-xl shadow-black/30 relative">
+    <aside className="h-full w-[300px] bg-[#141B3A]/60 backdrop-blur-xl border border-white/5 p-6 pb-2 flex flex-col rounded-[24px] shadow-[0_10px_40px_rgba(0,0,0,0.4)] relative">
       {/* Activity Header */}
       <div className="flex items-center justify-between pb-4 border-b border-white/5">
         <h2 className="text-white font-extrabold text-[13px] tracking-wide flex items-center gap-2">

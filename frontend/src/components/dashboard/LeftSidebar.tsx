@@ -3,7 +3,7 @@ import UploadHub from "./UploadHub";
 
 export default function LeftSidebar() {
   return (
-    <aside className="h-full w-[300px] bg-[#161825]/95 border border-white/5 p-6 flex flex-col rounded-3xl shadow-xl shadow-black/30 relative">
+    <aside className="h-full w-[300px] bg-[#141B3A]/60 backdrop-blur-xl border border-white/5 p-6 flex flex-col rounded-[24px] shadow-[0_10px_40px_rgba(0,0,0,0.4)] relative">
       {/* Brand Header */}
       <div className="flex items-center gap-4 mb-8 pl-1">
         <div className="w-[42px] h-[42px] flex-shrink-0 rounded-2xl bg-gradient-to-br from-[#62bbf0] to-[#59e3d3] flex items-center justify-center shadow-[0_4px_16px_rgba(98,187,240,0.3)]">
