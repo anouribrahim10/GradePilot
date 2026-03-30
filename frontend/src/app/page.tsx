@@ -70,7 +70,7 @@ export default function LandingPage() {
             Dashboard
           </Link>
           <Link
-            href="/dashboard"
+            href="/auth"
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-[#0B0F2A] transition-all hover:scale-105 active:scale-95"
             style={{ background: 'linear-gradient(135deg, #6D4AFF, #00F5D4)' }}
           >
@@ -119,17 +119,17 @@ export default function LandingPage() {
           className="mt-10 flex flex-col sm:flex-row items-center gap-4"
         >
           <Link
-            href="/dashboard"
+            href="/auth"
             className="flex items-center gap-2 px-7 py-3.5 rounded-2xl text-base font-bold text-[#0B0F2A] shadow-[0_4px_30px_rgba(109,74,255,0.35)] hover:shadow-[0_4px_40px_rgba(0,245,212,0.4)] transition-all hover:scale-105 active:scale-95"
             style={{ background: 'linear-gradient(135deg, #6D4AFF, #00F5D4)' }}
           >
             Start Planning Free <ArrowRight className="w-5 h-5" />
           </Link>
           <Link
-            href="/dashboard"
+            href="/auth"
             className="px-7 py-3.5 rounded-2xl text-base font-semibold text-[#94A3B8] border border-white/10 hover:border-white/20 hover:text-white transition-all"
           >
-            See the Dashboard
+            Sign In
           </Link>
         </motion.div>
 
@@ -209,7 +209,7 @@ export default function LandingPage() {
             Join students who let GradePilot handle the planning while they focus on learning.
           </p>
           <Link
-            href="/dashboard"
+            href="/auth"
             className="flex items-center gap-2 px-8 py-4 rounded-2xl text-base font-bold text-[#0B0F2A] shadow-[0_4px_30px_rgba(0,245,212,0.3)] hover:shadow-[0_4px_40px_rgba(0,245,212,0.5)] transition-all hover:scale-105 active:scale-95"
             style={{ background: 'linear-gradient(135deg, #6D4AFF, #00F5D4)' }}
           >
