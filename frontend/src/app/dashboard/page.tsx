@@ -18,9 +18,27 @@ export default function DashboardPage() {
             Organized autonomously by GradePilot
           </p>
         </div>
-        <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-bold shadow-inner shadow-emerald-500/10 backdrop-blur-md">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-          Optimum Schedule Generated
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-bold shadow-inner shadow-emerald-500/10 backdrop-blur-md">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            Optimum Schedule Generated
+          </div>
+          <button 
+            onClick={async () => {
+              try {
+                const { generateStudyPlan } = await import("../actions/generatePlan");
+                const res = await generateStudyPlan();
+                console.log("GEMINI ACTION RESULT:", res);
+                alert("Check console! Gemini Generated: " + res?.title);
+              } catch (e) {
+                console.error(e);
+                alert("Gemini call failed, check console");
+              }
+            }}
+            className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
+          >
+            Test Gemini Action
+          </button>
         </div>
       </header>
 
