@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Generator
+from typing import Any
 
 from fastapi.testclient import TestClient
+from _pytest.monkeypatch import MonkeyPatch
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session, sessionmaker
@@ -14,7 +16,7 @@ from app.deps.auth import CurrentUser, get_current_user
 from app.main import app
 
 
-def test_notes_to_study_plan_flow(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_notes_to_study_plan_flow(monkeypatch: MonkeyPatch) -> None:
     engine = create_engine(
         "sqlite+pysqlite://",
         future=True,
@@ -36,7 +38,9 @@ def test_notes_to_study_plan_flow(monkeypatch) -> None:  # type: ignore[no-untyp
     def _override_get_current_user() -> CurrentUser:
         return CurrentUser(user_id=str(user_uuid), claims={"sub": str(user_uuid)})
 
-    def _fake_generate_study_plan(*, class_title: str, notes_text: str):
+    def _fake_generate_study_plan(
+        *, class_title: str, notes_text: str
+    ) -> tuple[dict[str, Any], str]:
         assert class_title == "Math 101"
         assert "limits" in notes_text
         return (
@@ -48,7 +52,9 @@ def test_notes_to_study_plan_flow(monkeypatch) -> None:  # type: ignore[no-untyp
             "fake-model",
         )
 
-    monkeypatch.setattr("app.routers.classes.generate_study_plan", _fake_generate_study_plan)
+    monkeypatch.setattr(
+        "app.routers.classes.generate_study_plan", _fake_generate_study_plan
+    )
 
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_current_user] = _override_get_current_user
@@ -77,4 +83,3 @@ def test_notes_to_study_plan_flow(monkeypatch) -> None:  # type: ignore[no-untyp
     assert plan["plan_json"]["title"] == "Math 101 plan"
 
     app.dependency_overrides.clear()
-

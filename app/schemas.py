@@ -59,4 +59,3 @@ class StudyPlanAI(BaseModel):
     title: str
     goals: list[str]
     schedule: list[StudyPlanAIItem]
-

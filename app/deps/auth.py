@@ -29,11 +29,12 @@ def get_current_user(
         claims = verify_supabase_jwt(credentials.credentials)
     except ValueError as e:
         logger.info("auth_failed detail=%s", str(e))
-        raise HTTPException(status_code=401, detail=str(e) or "Invalid or expired token")
+        raise HTTPException(
+            status_code=401, detail=str(e) or "Invalid or expired token"
+        )
 
     sub = claims.get("sub")
     if not isinstance(sub, str) or sub == "":
         raise HTTPException(status_code=401, detail="Invalid token subject")
 
     return CurrentUser(user_id=sub, claims=claims)
-

@@ -35,7 +35,9 @@ def create_notes(
 def get_notes(
     *, db: Session, user_id: uuid.UUID, notes_id: uuid.UUID
 ) -> ClassNotes | None:
-    stmt = select(ClassNotes).where(ClassNotes.id == notes_id, ClassNotes.user_id == user_id)
+    stmt = select(ClassNotes).where(
+        ClassNotes.id == notes_id, ClassNotes.user_id == user_id
+    )
     return db.execute(stmt).scalar_one_or_none()
 
 
@@ -71,4 +73,3 @@ def create_study_plan(
     db.commit()
     db.refresh(plan)
     return plan
-

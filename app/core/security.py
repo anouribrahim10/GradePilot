@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from jose import jwt
@@ -34,7 +34,7 @@ def _get_jwks(*, now: float | None = None) -> dict[str, Any]:
     with httpx.Client(timeout=5.0) as client:
         resp = client.get(settings.supabase_jwks_url)
         resp.raise_for_status()
-        jwks = resp.json()
+        jwks = cast(dict[str, Any], resp.json())
 
     # Cache for 1 hour (Supabase rotates keys infrequently; this avoids per-request fetches)
     _jwks_cache = JWKSCache(jwks=jwks, expires_at=now_ts + 3600.0)
@@ -52,9 +52,9 @@ def verify_supabase_jwt(token: str) -> dict[str, Any]:
     """
     settings = get_settings()
     try:
-        header = jwt.get_unverified_header(token)
+        header = cast(dict[str, Any], jwt.get_unverified_header(token))
         alg = header.get("alg")
-        unverified = jwt.get_unverified_claims(token)
+        unverified = cast(dict[str, Any], jwt.get_unverified_claims(token))
         logger.info(
             "jwt_received alg=%s aud=%s iss=%s exp=%s sub_present=%s",
             alg,
@@ -92,8 +92,7 @@ def verify_supabase_jwt(token: str) -> dict[str, Any]:
             logger.warning("unsupported jwt alg=%s", alg)
             raise ValueError("Unsupported token algorithm")
 
-        return claims
+        return cast(dict[str, Any], claims)
     except JWTError as e:
         logger.info("jwt_invalid reason=%s", e.__class__.__name__)
         raise ValueError("Invalid or expired token") from e
-

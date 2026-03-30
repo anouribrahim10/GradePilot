@@ -93,4 +93,3 @@ def create_study_plan_endpoint(
         model=model_name,
     )
     return StudyPlanOut.model_validate(plan)
-

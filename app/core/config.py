@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 
 try:
-    from dotenv import load_dotenv  # type: ignore[import-not-found]
+    from dotenv import load_dotenv
 
     load_dotenv()
 except Exception:
@@ -55,4 +55,3 @@ def get_settings() -> Settings:
         google_api_key=os.getenv("GOOGLE_API_KEY"),
         google_model=os.getenv("GOOGLE_MODEL", "gemini-2.5-flash"),
     )
-

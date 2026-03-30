@@ -27,4 +27,3 @@ def test_auth_me_ok_with_mocked_verification(monkeypatch) -> None:  # type: igno
     body = resp.json()
     assert body["user_id"] == user_id
     assert body["claims"]["sub"] == user_id
-

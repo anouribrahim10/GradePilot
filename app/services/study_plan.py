@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 import google.generativeai as genai
 from pydantic import ValidationError
@@ -39,14 +39,17 @@ Student notes:
 """
 
 
-def generate_study_plan(*, class_title: str, notes_text: str) -> tuple[dict[str, Any], str]:
+def generate_study_plan(
+    *, class_title: str, notes_text: str
+) -> tuple[dict[str, Any], str]:
     settings = get_settings()
     if settings.google_api_key is None or settings.google_api_key == "":
         raise StudyPlanGenerationError("GOOGLE_API_KEY is not configured")
 
-    genai.configure(api_key=settings.google_api_key)
+    genai_any = cast(Any, genai)
+    genai_any.configure(api_key=settings.google_api_key)
     model_name = settings.google_model.removeprefix("models/")
-    model = genai.GenerativeModel(model_name)
+    model = genai_any.GenerativeModel(model_name)
     prompt = _build_prompt(class_title=class_title, notes_text=notes_text)
 
     try:
@@ -81,4 +84,3 @@ def generate_study_plan(*, class_title: str, notes_text: str) -> tuple[dict[str,
         raise StudyPlanGenerationError(
             f"Study plan generation failed ({e.__class__.__name__})"
         ) from e
-

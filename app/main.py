@@ -1,12 +1,10 @@
-from typing import Dict
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
-app = FastAPI(title="GradePilot API")
-
 from app.routers.auth import router as auth_router
 from app.routers.classes import router as classes_router
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from typing import Dict
+
+app = FastAPI(title="GradePilot API")
 
 app.add_middleware(
     CORSMiddleware,
