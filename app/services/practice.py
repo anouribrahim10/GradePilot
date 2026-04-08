@@ -17,9 +17,7 @@ class PracticeGenerationError(RuntimeError):
     pass
 
 
-def _build_prompt(
-    *, class_title: str, topic: str, count: int, difficulty: str
-) -> str:
+def _build_prompt(*, class_title: str, topic: str, count: int, difficulty: str) -> str:
     return f"""You are an expert computer science professor and study coach.
 
 Generate exactly {count} practice questions for the topic "{topic}" in the course "{class_title}".
