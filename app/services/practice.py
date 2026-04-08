@@ -17,7 +17,9 @@ class PracticeGenerationError(RuntimeError):
     pass
 
 
-def _build_prompt(*, class_title: str, topic: str, count: int, difficulty: str) -> str:
+def _build_prompt(
+    *, class_title: str, topic: str, count: int, difficulty: str
+) -> str:
     return f"""You are an expert computer science professor and study coach.
 
 Generate exactly {count} practice questions for the topic "{topic}" in the course "{class_title}".
@@ -54,7 +56,9 @@ def generate_practice_questions(
     genai_any.configure(api_key=settings.google_api_key)
     model_name = settings.google_model.removeprefix("models/")
     model = genai_any.GenerativeModel(model_name)
-    prompt = _build_prompt(class_title=class_title, topic=topic, count=count, difficulty=difficulty)
+    prompt = _build_prompt(
+        class_title=class_title, topic=topic, count=count, difficulty=difficulty
+    )
 
     try:
         resp = model.generate_content(
@@ -65,7 +69,12 @@ def generate_practice_questions(
             },
         )
         raw = resp.text or ""
-        logger.info("practice_llm_response model=%s chars=%s preview=%r", model_name, len(raw), raw[:300])
+        logger.info(
+            "practice_llm_response model=%s chars=%s preview=%r",
+            model_name,
+            len(raw),
+            raw[:300],
+        )
         data = json.loads(raw)
         # Handle both {"questions": [...]} and direct list [...]
         if isinstance(data, list):
@@ -74,8 +83,16 @@ def generate_practice_questions(
         return [q.model_dump() for q in parsed.questions]
     except (json.JSONDecodeError, ValidationError) as e:
         preview = raw[:500] if "raw" in locals() else ""
-        logger.warning("practice_parse_failed err=%s preview=%r", e.__class__.__name__, preview)
-        raise PracticeGenerationError("Model did not return valid questions JSON") from e
+        logger.warning(
+            "practice_parse_failed err=%s preview=%r",
+            e.__class__.__name__,
+            preview,
+        )
+        raise PracticeGenerationError(
+            "Model did not return valid questions JSON"
+        ) from e
     except Exception as e:
         logger.exception("practice_generation_failed err=%s", e.__class__.__name__)
-        raise PracticeGenerationError(f"Practice generation failed ({e.__class__.__name__})") from e
+        raise PracticeGenerationError(
+            f"Practice generation failed ({e.__class__.__name__})"
+        ) from e
