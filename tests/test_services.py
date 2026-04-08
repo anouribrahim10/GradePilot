@@ -31,6 +31,13 @@ def _patch_genai(model: MagicMock) -> Any:
     return genai_mock
 
 
+def _mock_settings(api_key: str = "test-key", model: str = "gemini-test") -> MagicMock:
+    s = MagicMock()
+    s.google_api_key = api_key
+    s.google_model = model
+    return s
+
+
 def test_practice_service_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.services import practice as svc
 
@@ -39,12 +46,10 @@ def test_practice_service_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     model = _mock_model(payload)
     monkeypatch.setattr(svc, "genai", _patch_genai(model))
-    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
-    monkeypatch.setenv("GOOGLE_MODEL", "gemini-test")
-
-    result = svc.generate_practice_questions(
-        class_title="CS 101", topic="Big-O", count=1, difficulty="Easy"
-    )
+    with patch("app.services.practice.get_settings", return_value=_mock_settings()):
+        result = svc.generate_practice_questions(
+            class_title="CS 101", topic="Big-O", count=1, difficulty="Easy"
+        )
     assert len(result) == 1
     assert result[0].q == "What is O(n)?"
 
@@ -58,12 +63,10 @@ def test_practice_service_list_response(monkeypatch: pytest.MonkeyPatch) -> None
     )
     model = _mock_model(payload)
     monkeypatch.setattr(svc, "genai", _patch_genai(model))
-    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
-    monkeypatch.setenv("GOOGLE_MODEL", "gemini-test")
-
-    result = svc.generate_practice_questions(
-        class_title="CS 101", topic="Recursion", count=1, difficulty="Medium"
-    )
+    with patch("app.services.practice.get_settings", return_value=_mock_settings()):
+        result = svc.generate_practice_questions(
+            class_title="CS 101", topic="Recursion", count=1, difficulty="Medium"
+        )
     assert result[0].q == "Define recursion."
 
 
@@ -73,13 +76,11 @@ def test_practice_service_invalid_json(monkeypatch: pytest.MonkeyPatch) -> None:
 
     model = _mock_model("not json at all")
     monkeypatch.setattr(svc, "genai", _patch_genai(model))
-    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
-    monkeypatch.setenv("GOOGLE_MODEL", "gemini-test")
-
-    with pytest.raises(PracticeGenerationError, match="valid questions JSON"):
-        svc.generate_practice_questions(
-            class_title="CS 101", topic="X", count=1, difficulty="Hard"
-        )
+    with patch("app.services.practice.get_settings", return_value=_mock_settings()):
+        with pytest.raises(PracticeGenerationError, match="valid questions JSON"):
+            svc.generate_practice_questions(
+                class_title="CS 101", topic="X", count=1, difficulty="Hard"
+            )
 
 
 def test_practice_service_no_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -103,13 +104,11 @@ def test_practice_service_model_exception(monkeypatch: pytest.MonkeyPatch) -> No
     model = MagicMock()
     model.generate_content.side_effect = RuntimeError("network error")
     monkeypatch.setattr(svc, "genai", _patch_genai(model))
-    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
-    monkeypatch.setenv("GOOGLE_MODEL", "gemini-test")
-
-    with pytest.raises(PracticeGenerationError, match="RuntimeError"):
-        svc.generate_practice_questions(
-            class_title="CS 101", topic="X", count=1, difficulty="Easy"
-        )
+    with patch("app.services.practice.get_settings", return_value=_mock_settings()):
+        with pytest.raises(PracticeGenerationError, match="RuntimeError"):
+            svc.generate_practice_questions(
+                class_title="CS 101", topic="X", count=1, difficulty="Easy"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -129,12 +128,10 @@ def test_study_plan_service_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     model = _mock_model(payload)
     monkeypatch.setattr(svc, "genai", _patch_genai(model))
-    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
-    monkeypatch.setenv("GOOGLE_MODEL", "gemini-test")
-
-    plan, model_name = svc.generate_study_plan(
-        class_title="CS 101", notes_text="Sorting algorithms notes."
-    )
+    with patch("app.services.study_plan.get_settings", return_value=_mock_settings()):
+        plan, model_name = svc.generate_study_plan(
+            class_title="CS 101", notes_text="Sorting algorithms notes."
+        )
     assert plan["title"] == "CS Plan"
     assert model_name == "gemini-test"
 
@@ -145,11 +142,9 @@ def test_study_plan_service_invalid_json(monkeypatch: pytest.MonkeyPatch) -> Non
 
     model = _mock_model("bad json")
     monkeypatch.setattr(svc, "genai", _patch_genai(model))
-    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
-    monkeypatch.setenv("GOOGLE_MODEL", "gemini-test")
-
-    with pytest.raises(StudyPlanGenerationError, match="valid study-plan JSON"):
-        svc.generate_study_plan(class_title="CS 101", notes_text="notes")
+    with patch("app.services.study_plan.get_settings", return_value=_mock_settings()):
+        with pytest.raises(StudyPlanGenerationError, match="valid study-plan JSON"):
+            svc.generate_study_plan(class_title="CS 101", notes_text="notes")
 
 
 def test_study_plan_service_no_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -169,11 +164,9 @@ def test_study_plan_service_model_exception(monkeypatch: pytest.MonkeyPatch) -> 
     model = MagicMock()
     model.generate_content.side_effect = RuntimeError("timeout")
     monkeypatch.setattr(svc, "genai", _patch_genai(model))
-    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
-    monkeypatch.setenv("GOOGLE_MODEL", "gemini-test")
-
-    with pytest.raises(StudyPlanGenerationError, match="RuntimeError"):
-        svc.generate_study_plan(class_title="CS 101", notes_text="notes")
+    with patch("app.services.study_plan.get_settings", return_value=_mock_settings()):
+        with pytest.raises(StudyPlanGenerationError, match="RuntimeError"):
+            svc.generate_study_plan(class_title="CS 101", notes_text="notes")
 
 
 # ---------------------------------------------------------------------------
@@ -277,8 +270,11 @@ def test_get_jwks_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_jwks: dict[str, Any] = {"keys": [{"kid": "abc"}]}
     cached = security.JWKSCache(jwks=fake_jwks, expires_at=9999999999.0)
     monkeypatch.setattr(security, "_jwks_cache", cached)
-
-    result = security._get_jwks(now=1000.0)
+    with patch("app.core.security.get_settings") as mock_settings:
+        mock_settings.return_value = MagicMock(
+            supabase_jwks_url="https://example.supabase.co/auth/v1/.well-known/jwks.json"
+        )
+        result = security._get_jwks(now=1000.0)
     assert result == fake_jwks
 
 
