@@ -3,45 +3,10 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, ChevronDown, Eye, EyeOff } from 'lucide-react';
-import { listClasses, type ClassOut } from '@/lib/backend';
+import { listClasses, generatePractice, type ClassOut, type PracticeQuestion } from '@/lib/backend';
 
 const DIFFICULTIES = ['Easy', 'Medium', 'Hard'];
 const QUESTION_COUNTS = [3, 5, 10];
-
-type Question = { q: string; a: string };
-
-const MOCK_QUESTIONS: Record<string, Question[]> = {
-  'Arrays & Linked Lists': [
-    { q: 'What is the time complexity of accessing an element in an array by index?', a: 'O(1) — arrays support constant-time random access via index.' },
-    { q: 'What is the main advantage of a linked list over an array?', a: 'Dynamic size — linked lists can grow or shrink at runtime without reallocation.' },
-    { q: 'How do you detect a cycle in a linked list?', a: "Use Floyd's cycle detection algorithm (slow/fast pointers). If they meet, a cycle exists." },
-    { q: 'What is the time complexity of inserting at the head of a singly linked list?', a: 'O(1) — just update the head pointer.' },
-    { q: 'What is the difference between a stack and a queue?', a: 'Stack is LIFO (Last In First Out); Queue is FIFO (First In First Out).' },
-  ],
-};
-
-function getMockQuestions(topic: string, count: number, difficulty: string): Question[] {
-  const pool = MOCK_QUESTIONS[topic] ?? [
-    { q: `What is the definition of ${topic}?`, a: `${topic} refers to a fundamental concept that defines the core principles and relationships within its domain.` },
-    { q: `Why is ${topic} important?`, a: `${topic} is important because it forms the foundation for understanding more advanced concepts in the field.` },
-    { q: `Give an example of ${topic} in practice.`, a: `A practical example of ${topic} can be seen when applying its principles to solve real-world problems efficiently.` },
-    { q: `What are the key components of ${topic}?`, a: `The key components of ${topic} include its core elements, their interactions, and the rules governing their behaviour.` },
-    { q: `How does ${topic} relate to other concepts in the field?`, a: `${topic} connects to other concepts by sharing foundational principles and building upon or extending them.` },
-    { q: `What is a common misconception about ${topic}?`, a: `A common misconception is that ${topic} is more complex than it is — in reality it follows a clear set of rules.` },
-    { q: `How would you explain ${topic} to a beginner?`, a: `To a beginner, ${topic} can be explained as a structured way of thinking about a specific problem or concept.` },
-    { q: `What problem does ${topic} solve?`, a: `${topic} solves the problem of efficiently organising or processing information within its domain.` },
-    { q: `What are the limitations of ${topic}?`, a: `The limitations of ${topic} include edge cases where its assumptions break down or where it becomes inefficient.` },
-    { q: `How has ${topic} evolved over time?`, a: `${topic} has evolved as new research and practical applications revealed better approaches and deeper understanding.` },
-  ];
-  const offset = difficulty === 'Easy' ? 0 : difficulty === 'Medium' ? 2 : 4;
-  const rotated = [...pool.slice(offset), ...pool.slice(0, offset)];
-  // Cycle through pool to fill requested count
-  const result: Question[] = [];
-  for (let i = 0; i < count; i++) {
-    result.push(rotated[i % rotated.length]);
-  }
-  return result;
-}
 
 export default function PracticePage() {
   const [classes, setClasses] = useState<ClassOut[]>([]);
@@ -50,10 +15,11 @@ export default function PracticePage() {
   const [topic, setTopic] = useState('');
   const [difficulty, setDifficulty] = useState('Medium');
   const [count, setCount] = useState(5);
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [questions, setQuestions] = useState<PracticeQuestion[]>([]);
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const [allRevealed, setAllRevealed] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
 
   useEffect(() => {
     listClasses()
@@ -62,13 +28,19 @@ export default function PracticePage() {
   }, []);
 
   const handleGenerate = async () => {
-    if (!topic.trim()) return;
+    if (!topic.trim() || !selectedClassId) return;
     setGenerating(true);
     setRevealed(new Set());
     setAllRevealed(false);
-    await new Promise((r) => setTimeout(r, 900));
-    setQuestions(getMockQuestions(topic.trim(), count, difficulty));
-    setGenerating(false);
+    setGenError(null);
+    try {
+      const data = await generatePractice(selectedClassId, topic.trim(), count, difficulty);
+      setQuestions(data.questions);
+    } catch (e: any) {
+      setGenError(e?.message ?? 'Failed to generate questions');
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const toggleReveal = (i: number) => {
@@ -198,6 +170,12 @@ export default function PracticePage() {
           )}
         </button>
       </div>
+
+      {genError && (
+        <div className="mb-4 px-4 py-3 rounded-2xl border border-rose-500/20 bg-rose-500/10 text-sm text-rose-300">
+          {genError}
+        </div>
+      )}
 
       <AnimatePresence>
         {questions.length > 0 && (

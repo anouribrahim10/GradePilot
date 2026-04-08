@@ -105,6 +105,15 @@ export type StudyPlanOut = {
   created_at: string;
 };
 
+export type PracticeQuestion = { q: string; a: string };
+
+export function generatePractice(classId: string, topic: string, count: number, difficulty: string) {
+  return backendFetch<{ questions: PracticeQuestion[] }>(`/classes/${classId}/practice`, {
+    method: 'POST',
+    body: JSON.stringify({ topic, count, difficulty }),
+  });
+}
+
 export function listClasses() {
   return backendFetch<ClassOut[]>('/classes');
 }

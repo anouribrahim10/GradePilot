@@ -13,9 +13,12 @@ from app.schemas import (
     ClassOut,
     NotesCreate,
     NotesOut,
+    PracticeGenerateOut,
+    PracticeGenerateRequest,
     StudyPlanCreate,
     StudyPlanOut,
 )
+from app.services.practice import PracticeGenerationError, generate_practice_questions
 from app.services.study_plan import StudyPlanGenerationError, generate_study_plan
 
 router = APIRouter(prefix="/classes", tags=["classes"])
@@ -63,6 +66,29 @@ def add_notes(
         db=db, user_id=user_id, class_id=class_id, notes_text=payload.notes_text
     )
     return NotesOut.model_validate(notes)
+
+
+@router.post("/{class_id}/practice", response_model=PracticeGenerateOut)
+def generate_practice(
+    class_id: uuid.UUID,
+    payload: PracticeGenerateRequest,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PracticeGenerateOut:
+    user_id = _user_uuid(user)
+    clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
+    if clazz is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+    try:
+        questions = generate_practice_questions(
+            class_title=clazz.title,
+            topic=payload.topic,
+            count=payload.count,
+            difficulty=payload.difficulty,
+        )
+    except PracticeGenerationError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return PracticeGenerateOut(questions=questions)
 
 
 @router.post("/{class_id}/study-plan", response_model=StudyPlanOut)

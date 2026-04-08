@@ -59,3 +59,22 @@ class StudyPlanAI(BaseModel):
     title: str
     goals: list[str]
     schedule: list[StudyPlanAIItem]
+
+
+class PracticeQuestion(BaseModel):
+    q: str
+    a: str
+
+
+class PracticeQuestionsAI(BaseModel):
+    questions: list[PracticeQuestion]
+
+
+class PracticeGenerateRequest(BaseModel):
+    topic: str = Field(min_length=1, max_length=200)
+    count: int = Field(default=5, ge=1, le=10)
+    difficulty: str = Field(default="Medium")
+
+
+class PracticeGenerateOut(BaseModel):
+    questions: list[PracticeQuestion]
