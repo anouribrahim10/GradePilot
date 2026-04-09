@@ -132,10 +132,29 @@ export function addNotes(classId: string, notes_text: string) {
   });
 }
 
+export function getClassNotes(classId: string) {
+  return backendFetch<NotesOut[]>(`/classes/${classId}/notes`);
+}
+
 export function createStudyPlan(classId: string, notesId?: string) {
   return backendFetch<StudyPlanOut>(`/classes/${classId}/study-plan`, {
     method: 'POST',
     body: JSON.stringify({ notes_id: notesId ?? null }),
+  });
+}
+
+export type SummariseOut = {
+  title: string;
+  summary: string;
+  key_topics: string[];
+  important_dates: string[];
+  extracted_notes: string;
+};
+
+export function summariseDocument(filename: string, raw_text: string) {
+  return backendFetch<SummariseOut>('/summarise', {
+    method: 'POST',
+    body: JSON.stringify({ filename, raw_text }),
   });
 }
 

@@ -60,6 +60,17 @@ def get_latest_notes(
     return db.execute(stmt).scalar_one_or_none()
 
 
+def list_notes(
+    *, db: Session, user_id: uuid.UUID, class_id: uuid.UUID
+) -> list[ClassNotes]:
+    stmt = (
+        select(ClassNotes)
+        .where(ClassNotes.class_id == class_id, ClassNotes.user_id == user_id)
+        .order_by(desc(ClassNotes.created_at))
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
 def create_study_plan(
     *,
     db: Session,

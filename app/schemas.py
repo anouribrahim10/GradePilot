@@ -78,3 +78,16 @@ class PracticeGenerateRequest(BaseModel):
 
 class PracticeGenerateOut(BaseModel):
     questions: list[PracticeQuestion]
+
+
+class SummariseRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    raw_text: str = Field(min_length=1)
+
+
+class SummariseOut(BaseModel):
+    title: str
+    summary: str
+    key_topics: list[str]
+    important_dates: list[str]
+    extracted_notes: str

@@ -50,6 +50,20 @@ def create_class(
     return ClassOut.model_validate(clazz)
 
 
+@router.get("/{class_id}/notes", response_model=list[NotesOut])
+def list_notes(
+    class_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[NotesOut]:
+    user_id = _user_uuid(user)
+    clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
+    if clazz is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+    notes = crud.list_notes(db=db, user_id=user_id, class_id=class_id)
+    return [NotesOut.model_validate(n) for n in notes]
+
+
 @router.post("/{class_id}/notes", response_model=NotesOut)
 def add_notes(
     class_id: uuid.UUID,
