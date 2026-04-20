@@ -60,32 +60,32 @@ erDiagram
         string email
         string created_at
     }
-    CLASS {
+    COURSE {
         string id PK
         string user_id FK
         string title
         string created_at
     }
-    CLASS_NOTES {
+    COURSE_NOTES {
         string id PK
-        string class_id FK
+        string course_id FK
         string user_id FK
         string notes_text
         string created_at
     }
     STUDY_PLAN {
         string id PK
-        string class_id FK
+        string course_id FK
         string user_id FK
         string source_notes_id FK
         string plan_json
         string model
         string created_at
     }
-    USER ||--o{ CLASS : "owns"
-    CLASS ||--o{ CLASS_NOTES : "has"
-    CLASS ||--o{ STUDY_PLAN : "has"
-    CLASS_NOTES ||--o{ STUDY_PLAN : "source for"
+    USER ||--o{ COURSE : "owns"
+    COURSE ||--o{ COURSE_NOTES : "has"
+    COURSE ||--o{ STUDY_PLAN : "has"
+    COURSE_NOTES ||--o{ STUDY_PLAN : "source for"
 ```
 
 These four entities model the core academic-planning capability of GradePilot. A **USER** (managed by Supabase Auth) can own many **CLASS** records, each representing a course the student is enrolled in. Each class can accumulate many **CLASS_NOTES** entries — raw text the student pastes or uploads from their course materials. A **STUDY_PLAN** is generated from a specific set of notes: it holds a foreign key to both the parent `CLASS` and the `CLASS_NOTES` record that was used as source material (`source_notes_id`), allowing the system to trace which notes produced which plan. The generated schedule is stored as a `JSONB` blob (`plan_json`) alongside the name of the Gemini model that produced it, enabling future model comparisons. All tables carry a `user_id` column so that row-level security policies in Supabase can enforce per-user data isolation at the database layer.
