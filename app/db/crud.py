@@ -11,9 +11,7 @@ from app.db.models import Class, ClassNotes, StudyPlan
 
 def list_classes(*, db: Session, user_id: uuid.UUID) -> list[Class]:
     stmt = (
-        select(Class)
-        .where(Class.user_id == user_id)
-        .order_by(desc(Class.created_at))
+        select(Class).where(Class.user_id == user_id).order_by(desc(Class.created_at))
     )
     return list(db.execute(stmt).scalars().all())
 
