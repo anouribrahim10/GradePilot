@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
+
+import { useState, useEffect, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Eye, EyeOff, ArrowLeft, RefreshCw } from 'lucide-react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { generatePractice, listClasses, type PracticeQuestion } from '@/lib/backend';
 import Link from 'next/link';
 
-export default function PracticeResultsPage() {
+function PracticeResultsInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -179,5 +181,13 @@ export default function PracticeResultsPage() {
         </motion.div>
       )}
     </motion.div>
+  );
+}
+
+export default function PracticeResultsPage() {
+  return (
+    <Suspense>
+      <PracticeResultsInner />
+    </Suspense>
   );
 }
