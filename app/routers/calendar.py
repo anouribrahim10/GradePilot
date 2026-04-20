@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from app.deps.auth import CurrentUser, get_current_user
 from app.db.session import get_db
-from app.db.models import GoogleCalendarToken
+from app.db.models import GoogleCalendarToken, GoogleEventSync
 
 # We assume pip install google-auth-oauthlib has finished
 from google_auth_oauthlib.flow import Flow
@@ -95,15 +95,42 @@ def sync_events(user: CurrentUser = Depends(get_current_user), db: Session = Dep
                 }
             }
             
-            # Since this environment may just be using mock credentials (no actual GOOGLE API setup), 
-            # we try/catch the REST execution so it won't crash the frontend flow during UI testing.
             if os.environ.get("GOOGLE_CLIENT_ID") is None:
                 print(f"Mock push event to Google: {body['summary']}")
-            else:
-                service.events().insert(calendarId="primary", body=body).execute()
+                continue
+                
+            app_evt_id_str = str(app_event["id"])
+            mapping = db.query(GoogleEventSync).filter_by(
+                user_id=user_uuid, 
+                app_event_id=app_evt_id_str
+            ).first()
 
+            if mapping:
+                try:
+                    service.events().update(
+                        calendarId="primary", 
+                        eventId=mapping.google_event_id, 
+                        body=body
+                    ).execute()
+                except Exception as e:
+                    print(f"Failed to update existing event -> {str(e)}")
+            else:
+                res = service.events().insert(
+                    calendarId="primary", 
+                    body=body
+                ).execute()
+                
+                new_mapping = GoogleEventSync(
+                    user_id=user_uuid,
+                    app_event_id=app_evt_id_str,
+                    google_event_id=res["id"]
+                )
+                db.add(new_mapping)
+
+        db.commit()
         return {"status": "synced"}
     except Exception as e:
+        db.rollback()
         print(f"Calendar sync error: {str(e)}")
         raise HTTPException(status_code=500, detail="Calendar synchronization failed")
 
