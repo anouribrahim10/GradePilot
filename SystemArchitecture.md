@@ -24,7 +24,7 @@ The frontend sends REST requests to the FastAPI backend, which validates the use
 
 ```mermaid
 erDiagram
-    USER ||--o{ COURSE : owns
+    USER ||--o{ COURSE : takes
     COURSE ||--o{ COURSE_NOTES : has
     COURSE ||--o{ STUDY_PLAN : has
     COURSE_NOTES ||--o{ STUDY_PLAN : "source for"
