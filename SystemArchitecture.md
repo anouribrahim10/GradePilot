@@ -60,14 +60,12 @@ erDiagram
         string email
         string created_at
     }
-
     CLASS {
         string id PK
         string user_id FK
         string title
         string created_at
     }
-
     CLASS_NOTES {
         string id PK
         string class_id FK
@@ -75,7 +73,6 @@ erDiagram
         string notes_text
         string created_at
     }
-
     STUDY_PLAN {
         string id PK
         string class_id FK
@@ -85,7 +82,6 @@ erDiagram
         string model
         string created_at
     }
-
     USER ||--o{ CLASS : "owns"
     CLASS ||--o{ CLASS_NOTES : "has"
     CLASS ||--o{ STUDY_PLAN : "has"
