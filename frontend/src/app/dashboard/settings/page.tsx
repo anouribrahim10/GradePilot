@@ -3,7 +3,7 @@
 import { ReactNode, useId } from 'react';
 import { motion } from 'framer-motion';
 import { Bell, Calendar, CheckCircle2, Clock, Link2, Settings as SettingsIcon, XCircle } from 'lucide-react';
-import { DEADLINE_OPTIONS, DeadlineDays, isDeadlineDays } from '@/lib/settingsTypes';
+import { DEADLINE_OPTIONS, isDeadlineDays } from '@/lib/settingsTypes';
 import { useSettings } from '@/lib/useSettings';
 
 export default function SettingsPage() {
@@ -214,5 +214,3 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
     </li>
   );
 }
-
-export type { DeadlineDays };
