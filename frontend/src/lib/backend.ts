@@ -52,14 +52,23 @@ export async function backendFetch<T>(
   init?: RequestInit
 ): Promise<T> {
   const token = await getAccessToken();
-  const res = await fetch(`${BACKEND_URL}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BACKEND_URL}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers ?? {}),
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch (e) {
+    throw new BackendError(
+      `Cannot reach backend at ${BACKEND_URL}${path}. Is the API server running?`,
+      0,
+      String(e)
+    );
+  }
 
   const contentType = res.headers.get('content-type') ?? '';
   const body = contentType.includes('application/json')
@@ -110,6 +119,10 @@ export function createClass(title: string) {
     method: 'POST',
     body: JSON.stringify({ title }),
   });
+}
+
+export function listClasses() {
+  return backendFetch<ClassOut[]>('/classes', { method: 'GET' });
 }
 
 export function addNotes(classId: string, notes_text: string) {

@@ -11,6 +11,7 @@ import {
   type StudyPlanOut,
 } from "@/lib/backend";
 import UploadHub from "@/components/dashboard/UploadHub";
+import Link from "next/link";
 
 export default function DashboardPage() {
   const [classTitle, setClassTitle] = useState("");
@@ -18,6 +19,7 @@ export default function DashboardPage() {
   const [clazz, setClazz] = useState<ClassOut | null>(null);
   const [notes, setNotes] = useState<NotesOut | null>(null);
   const [plan, setPlan] = useState<StudyPlanOut | null>(null);
+  const [planOpen, setPlanOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,9 +46,23 @@ export default function DashboardPage() {
           </p>
         </div>
         {plan ? (
-          <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-bold shadow-inner shadow-emerald-500/10 backdrop-blur-md">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-            Plan Generated
+          <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard/classes"
+              className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-white text-[11px] font-extrabold hover:bg-white/10 transition-colors"
+            >
+              Saved classes
+            </Link>
+            <button
+              onClick={() => setPlanOpen(true)}
+              className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-white text-[11px] font-extrabold hover:bg-white/10 transition-colors"
+            >
+              View plan
+            </button>
+            <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-bold shadow-inner shadow-emerald-500/10 backdrop-blur-md">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+              Plan Generated
+            </div>
           </div>
         ) : null}
       </header>
@@ -105,6 +121,7 @@ export default function DashboardPage() {
                 setClazz(created);
                 setNotes(null);
                 setPlan(null);
+                setPlanOpen(false);
               } catch (e: any) {
                 setError(e?.message ?? "Failed to create class");
               } finally {
@@ -181,6 +198,7 @@ export default function DashboardPage() {
                 const created = await addNotes(clazz.id, notesText.trim());
                 setNotes(created);
                 setPlan(null);
+                setPlanOpen(false);
               } catch (e: any) {
                 setError(e?.message ?? "Failed to save notes");
               } finally {
@@ -237,6 +255,7 @@ export default function DashboardPage() {
               try {
                 const created = await createStudyPlan(clazz.id, notes.id);
                 setPlan(created);
+                setPlanOpen(true);
               } catch (e: any) {
                 setError(e?.message ?? "Failed to generate plan");
               } finally {
@@ -289,6 +308,92 @@ export default function DashboardPage() {
         </motion.div>
 
       </div>
+
+      {plan && planOpen ? (
+        <div
+          className="fixed inset-0 z-50"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setPlanOpen(false);
+          }}
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="w-full max-w-[920px] max-h-[85vh] rounded-[1.5rem] border border-white/10 bg-[#0B0F2A]/95 shadow-[0_30px_120px_rgba(0,0,0,0.6)] overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
+                <div className="min-w-0">
+                  <p className="text-slate-400 text-[10px] font-extrabold uppercase tracking-[0.2em]">
+                    Study Plan
+                  </p>
+                  <h3 className="text-white text-lg font-extrabold truncate">
+                    {plan.plan_json?.title ?? "Study Plan"}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setPlanOpen(false)}
+                  className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-sm font-extrabold transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto max-h-[calc(85vh-64px)] custom-scrollbar">
+                {plan.plan_json?.goals?.length ? (
+                  <div className="mb-6">
+                    <p className="text-slate-400 text-[10px] font-extrabold uppercase tracking-[0.2em] mb-3">
+                      Goals
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {plan.plan_json.goals.map((g) => (
+                        <span
+                          key={g}
+                          className="text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-200"
+                        >
+                          {g}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div>
+                  <p className="text-slate-400 text-[10px] font-extrabold uppercase tracking-[0.2em] mb-3">
+                    Schedule
+                  </p>
+
+                  {schedule.length ? (
+                    <div className="space-y-3">
+                      {schedule.map((d) => (
+                        <div
+                          key={d.day}
+                          className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                        >
+                          <p className="text-white text-sm font-extrabold mb-2">
+                            {d.day}
+                          </p>
+                          <ul className="space-y-1.5">
+                            {d.tasks.map((t) => (
+                              <li key={t} className="text-slate-200 text-sm leading-relaxed">
+                                <span className="text-slate-500 mr-2">•</span>
+                                {t}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-slate-400 text-sm">
+                      No schedule returned for this plan.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </motion.div>
   );
 }

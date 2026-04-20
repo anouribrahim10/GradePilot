@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.db import crud
@@ -28,13 +29,28 @@ def _user_uuid(user: CurrentUser) -> uuid.UUID:
         raise HTTPException(status_code=401, detail="Invalid user id")
 
 
+@router.get("", response_model=list[ClassOut])
+def list_classes(
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[ClassOut]:
+    classes = crud.list_classes(db=db, user_id=_user_uuid(user))
+    return [ClassOut.model_validate(c) for c in classes]
+
+
 @router.post("", response_model=ClassOut)
 def create_class(
     payload: ClassCreate,
     user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ClassOut:
-    clazz = crud.create_class(db=db, user_id=_user_uuid(user), title=payload.title)
+    try:
+        clazz = crud.create_class(db=db, user_id=_user_uuid(user), title=payload.title)
+    except OperationalError:
+        raise HTTPException(
+            status_code=503,
+            detail="Database unavailable. Check DATABASE_URL and network connectivity.",
+        )
     return ClassOut.model_validate(clazz)
 
 
