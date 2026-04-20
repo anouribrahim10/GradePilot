@@ -10,7 +10,9 @@ from app.services.health_service import HealthServiceError
 client = TestClient(app)
 
 
-def test_health_integration_calls_service_success(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_health_integration_calls_service_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     called = {"value": False}
 
     def fake_get_health_status() -> dict[str, str]:
@@ -36,4 +38,3 @@ def test_health_integration_handles_service_error(
     response = client.get("/health")
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert response.json() == {"detail": "dependency failed"}
-

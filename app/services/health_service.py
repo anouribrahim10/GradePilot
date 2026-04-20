@@ -8,4 +8,3 @@ class HealthServiceError(Exception):
 def get_health_status() -> Dict[str, str]:
     """Return application health status."""
     return {"status": "ok"}
-
