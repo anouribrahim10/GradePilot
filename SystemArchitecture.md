@@ -56,34 +56,34 @@ The GradePilot system is composed of four layers. The **Next.js frontend** (Reac
 ```mermaid
 erDiagram
     USER {
-        uuid id PK
+        string id PK
         string email
         string created_at
     }
 
     CLASS {
-        uuid id PK
-        uuid user_id FK
+        string id PK
+        string user_id FK
         string title
-        datetime created_at
+        string created_at
     }
 
     CLASS_NOTES {
-        uuid id PK
-        uuid class_id FK
-        uuid user_id FK
-        text notes_text
-        datetime created_at
+        string id PK
+        string class_id FK
+        string user_id FK
+        string notes_text
+        string created_at
     }
 
     STUDY_PLAN {
-        uuid id PK
-        uuid class_id FK
-        uuid user_id FK
-        uuid source_notes_id FK
-        jsonb plan_json
+        string id PK
+        string class_id FK
+        string user_id FK
+        string source_notes_id FK
+        string plan_json
         string model
-        datetime created_at
+        string created_at
     }
 
     USER ||--o{ CLASS : "owns"
