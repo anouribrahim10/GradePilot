@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, BookOpen, AlertCircle, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, BookOpen, AlertCircle, X, RefreshCw } from "lucide-react";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { getCalendarEvents, syncCalendarEvents } from "@/lib/backend";
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -12,14 +13,14 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 
 type ViewType = "month" | "week";
 
-// Mock Events Data
-const MOCK_EVENTS = [
-  { id: 1, title: "Data Structures Midterm", date: new Date(new Date().getFullYear(), new Date().getMonth(), 15), type: "exam", time: "10:00 AM" },
-  { id: 2, title: "Study: Binary Trees", date: new Date(new Date().getFullYear(), new Date().getMonth(), 12), type: "study", time: "2:00 PM" },
-  { id: 3, title: "Assignment 3 Due", date: new Date(new Date().getFullYear(), new Date().getMonth(), 18), type: "assignment", time: "11:59 PM" },
-  { id: 4, title: "Study: Graph Algorithms", date: new Date(new Date().getFullYear(), new Date().getMonth(), 20), type: "study", time: "6:00 PM" },
-  { id: 5, title: "Review Notes", date: new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()), type: "study", time: "4:00 PM" }, // Today
-];
+export interface CalendarEvent {
+  id: string | number;
+  title: string;
+  date: Date;
+  type: string;
+  time: string;
+  description: string;
+}
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const HOURS_OF_DAY = Array.from({ length: 13 }, (_, i) => i + 8); // 8 AM to 8 PM
@@ -27,7 +28,57 @@ const HOURS_OF_DAY = Array.from({ length: 13 }, (_, i) => i + 8); // 8 AM to 8 P
 export default function CalendarPage() {
   const [view, setView] = useState<ViewType>("month");
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedEvent, setSelectedEvent] = useState<typeof MOCK_EVENTS[0] | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    import("@/lib/backend").then(({ checkCalendarConnection }) => {
+      checkCalendarConnection()
+        .then(res => setIsConnected(res.connected))
+        .catch(err => console.error("Could not check calendar status", err));
+    });
+  }, []);
+
+  const handleSync = async () => {
+    try {
+      setIsSyncing(true);
+      if (!isConnected) {
+        const { getCalendarAuthUrl } = await import("@/lib/backend");
+        const { url } = await getCalendarAuthUrl();
+        window.location.href = url;
+      } else {
+        await import("@/lib/backend").then(m => m.syncCalendarEvents());
+      }
+    } catch (err) {
+      console.error("Failed to sync calendar", err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    getCalendarEvents()
+      .then((data) => {
+        const mapped = data.map((ev) => {
+          const startDate = new Date(ev.start_datetime);
+          const timeString = startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          return {
+            id: ev.id,
+            title: ev.title,
+            date: startDate,
+            type: ev.type || "study",
+            time: timeString,
+            description: ev.description || "Study block",
+          };
+        });
+        setEvents(mapped);
+      })
+      .catch((err) => {
+        console.error("Failed to load events", err);
+      });
+  }, []);
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
@@ -103,10 +154,10 @@ export default function CalendarPage() {
   const isToday = (d: Date) => isSameDay(d, new Date());
 
   const getEventsForDate = (date: Date) => {
-    return MOCK_EVENTS.filter(e => isSameDay(e.date, date));
+    return events.filter(e => isSameDay(e.date, date));
   };
 
-  const renderEventBadge = (event: typeof MOCK_EVENTS[0], compact = false) => {
+  const renderEventBadge = (event: CalendarEvent, compact = false) => {
     const colors = {
       exam: "bg-rose-500/20 text-rose-300 border-rose-500/30",
       assignment: "bg-amber-500/20 text-amber-300 border-amber-500/30",
@@ -181,24 +232,34 @@ export default function CalendarPage() {
 
           {/* Navigation */}
           <div className="flex items-center gap-3">
-            {/* Disabled Sync / Refresh Buttons */}
+            {/* Sync / Refresh Buttons */}
             <div className="flex items-center gap-2 mr-2">
               <button 
-                disabled
-                title="Coming soon"
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-500 bg-white/5 border border-white/5 rounded-lg opacity-50 cursor-not-allowed relative group"
+                onClick={handleSync}
+                disabled={isSyncing}
+                title={isConnected ? "Sync with Google Calendar" : "Connect Google Calendar"}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all border",
+                  isSyncing 
+                    ? "text-slate-400 bg-white/10 border-white/10 cursor-not-allowed" 
+                    : "text-slate-300 bg-white/5 hover:bg-white/10 hover:text-white border-white/5 hover:border-white/10"
+                )}
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                Sync to Google
+                <RefreshCw className={cn("w-3.5 h-3.5", isSyncing && "animate-spin")} />
+                {isSyncing ? (isConnected ? "Syncing..." : "Connecting...") : (isConnected ? "Sync to Google" : "Connect Google")}
               </button>
               <button 
-                disabled
-                title="Coming soon"
-                className="p-1.5 text-slate-500 bg-white/5 border border-white/5 rounded-lg opacity-50 cursor-not-allowed flex items-center justify-center relative group"
+                onClick={handleSync}
+                disabled={isSyncing}
+                title={isConnected ? "Sync Calendar Data" : "Connect Calendar"}
+                className={cn(
+                  "p-1.5 rounded-lg flex items-center justify-center relative group transition-all border",
+                  isSyncing
+                    ? "text-slate-400 bg-white/10 border-white/10 cursor-not-allowed" 
+                    : "text-slate-300 bg-white/5 hover:bg-white/10 hover:text-white border-white/5 hover:border-white/10"
+                )}
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className={cn("w-4 h-4", isSyncing && "animate-pulse")} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
               </button>
@@ -403,9 +464,9 @@ export default function CalendarPage() {
                 
                 <div className="pt-4">
                   <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-3">Description</p>
-                  <p className="text-sm text-slate-300 leading-relaxed">
-                    This is a mock event description. In a fully implemented system, this would contain study notes, assignment details, or specific exam topics linked from your syllabus summary.
-                  </p>
+                  <div className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                    {selectedEvent.description}
+                  </div>
                 </div>
               </div>
             </motion.div>

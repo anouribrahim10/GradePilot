@@ -52,14 +52,24 @@ export async function backendFetch<T>(
   init?: RequestInit
 ): Promise<T> {
   const token = await getAccessToken();
-  const res = await fetch(`${BACKEND_URL}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BACKEND_URL}${path}`, {
+      ...init,
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers ?? {}),
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch (error: any) {
+    throw new BackendError(
+      `Network error: ${error.message}. Is the backend running?`,
+      0,
+      null
+    );
+  }
 
   const contentType = res.headers.get('content-type') ?? '';
   const body = contentType.includes('application/json')
@@ -156,5 +166,32 @@ export function summariseDocument(filename: string, raw_text: string) {
     method: 'POST',
     body: JSON.stringify({ filename, raw_text }),
   });
+}
+
+export type CalendarEventOut = {
+  id: string | number;
+  title: string;
+  start_datetime: string;
+  end_datetime: string;
+  description?: string | null;
+  type?: string | null;
+};
+
+export function getCalendarEvents() {
+  return backendFetch<CalendarEventOut[]>('/calendar/events');
+}
+
+export function syncCalendarEvents() {
+  return backendFetch<{ status: string }>('/calendar/sync', {
+    method: 'POST',
+  });
+}
+
+export function checkCalendarConnection() {
+  return backendFetch<{ connected: boolean }>('/calendar/status');
+}
+
+export function getCalendarAuthUrl() {
+  return backendFetch<{ url: string }>('/calendar/connect');
 }
 
