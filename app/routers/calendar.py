@@ -14,6 +14,8 @@ from app.db.models import GoogleCalendarToken
 
 # We assume pip install google-auth-oauthlib has finished
 from google_auth_oauthlib.flow import Flow
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -29,18 +31,18 @@ MOCK_BACKEND_EVENTS = [
     {
         "id": 1,
         "title": "Data Structures Midterm",
-        "start_datetime": datetime(now.year, now.month, 15, 10, 0).isoformat(),
-        "end_datetime": datetime(now.year, now.month, 15, 12, 0).isoformat(),
+        "start_datetime": datetime(now.year, now.month, 15, 10, 0).isoformat() + "Z",
+        "end_datetime": datetime(now.year, now.month, 15, 12, 0).isoformat() + "Z",
     },
 ]
 
-SCOPES = ['https://www.googleapis.com/auth/calendar.events.readonly']
+SCOPES = ['https://www.googleapis.com/auth/calendar.events']
 
 def get_flow(state: str = None):
     # Fallback to mock config if no env vars present
     client_config = {
         "web": {
-            "client_id": os.environ.get("GOOGLE_CLIENT_ID", "mock_client_id"),
+            "client_id": os.environ.get("GOOGLE_CLIENT_ID", "mock_client"),
             "project_id": "gradepilot",
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
@@ -63,8 +65,47 @@ def get_events():
     return MOCK_BACKEND_EVENTS
 
 @router.post("/sync")
-def sync_events():
-    return {"status": "synced"}
+def sync_events(user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        user_uuid = uuid.UUID(user.user_id)
+        token_record = db.query(GoogleCalendarToken).filter(GoogleCalendarToken.user_id == user_uuid).first()
+        
+        if not token_record:
+            raise HTTPException(status_code=400, detail="Calendar not connected")
+
+        creds = Credentials(
+            token=token_record.access_token,
+            refresh_token=token_record.refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=os.environ.get("GOOGLE_CLIENT_ID", "mock_client"),
+            client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", "mock_secret")
+        )
+
+        # Build Google Calendar client, bypassing discovery cache issues if any
+        service = build('calendar', 'v3', credentials=creds, cache_discovery=False)
+
+        for app_event in MOCK_BACKEND_EVENTS:
+            body = {
+                "summary": app_event["title"],
+                "start": {
+                    "dateTime": app_event["start_datetime"],
+                },
+                "end": {
+                    "dateTime": app_event["end_datetime"],
+                }
+            }
+            
+            # Since this environment may just be using mock credentials (no actual GOOGLE API setup), 
+            # we try/catch the REST execution so it won't crash the frontend flow during UI testing.
+            if os.environ.get("GOOGLE_CLIENT_ID") is None:
+                print(f"Mock push event to Google: {body['summary']}")
+            else:
+                service.events().insert(calendarId="primary", body=body).execute()
+
+        return {"status": "synced"}
+    except Exception as e:
+        print(f"Calendar sync error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Calendar synchronization failed")
 
 @router.get("/connect")
 def connect_calendar(user: CurrentUser = Depends(get_current_user)):

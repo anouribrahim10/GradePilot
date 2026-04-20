@@ -52,14 +52,23 @@ export async function backendFetch<T>(
   init?: RequestInit
 ): Promise<T> {
   const token = await getAccessToken();
-  const res = await fetch(`${BACKEND_URL}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BACKEND_URL}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers ?? {}),
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch (error: any) {
+    throw new BackendError(
+      `Network error: ${error.message}. Is the backend running?`,
+      0,
+      null
+    );
+  }
 
   const contentType = res.headers.get('content-type') ?? '';
   const body = contentType.includes('application/json')
