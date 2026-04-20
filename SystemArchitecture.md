@@ -30,7 +30,7 @@ erDiagram
     COURSE_NOTES ||--o{ STUDY_PLAN : "source for"
 ```
 
-A user can own many courses. Each course can have many notes and many study plans. A study plan is linked to the notes it was generated from, so the system can trace which notes produced which plan.
+A user can take many courses. Each course can have many notes and many study plans. A study plan is linked to the notes it was generated from, so the system can trace which notes produced which plan.
 
 ---
 
