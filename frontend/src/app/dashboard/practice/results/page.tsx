@@ -49,7 +49,7 @@ export default function PracticeResultsPage() {
   const toggleReveal = (i: number) => {
     setRevealed((prev) => {
       const next = new Set(prev);
-      next.has(i) ? next.delete(i) : next.add(i);
+      if (next.has(i)) { next.delete(i); } else { next.add(i); }
       return next;
     });
   };
