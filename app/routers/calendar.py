@@ -1,8 +1,8 @@
 import os
 import uuid
 import json
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Request
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
@@ -15,6 +15,7 @@ from app.db.models import GoogleCalendarToken, GoogleEventSync
 # We assume pip install google-auth-oauthlib has finished
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
@@ -78,8 +79,17 @@ def sync_events(user: CurrentUser = Depends(get_current_user), db: Session = Dep
             refresh_token=token_record.refresh_token,
             token_uri="https://oauth2.googleapis.com/token",
             client_id=os.environ.get("GOOGLE_CLIENT_ID", "mock_client"),
-            client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", "mock_secret")
+            client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", "mock_secret"),
+            expiry=token_record.expiry.replace(tzinfo=None) if token_record.expiry else None
         )
+
+        if creds.expired and creds.refresh_token:
+            if os.environ.get("GOOGLE_CLIENT_ID") is not None:
+                creds.refresh(Request())
+                token_record.access_token = creds.token
+                if creds.expiry:
+                    token_record.expiry = creds.expiry.replace(tzinfo=timezone.utc)
+                db.commit()
 
         # Build Google Calendar client, bypassing discovery cache issues if any
         service = build('calendar', 'v3', credentials=creds, cache_discovery=False)
@@ -147,7 +157,7 @@ def connect_calendar(user: CurrentUser = Depends(get_current_user)):
     return {"url": authorization_url}
 
 @router.get("/callback")
-def calendar_callback(request: Request, state: str, code: str, db: Session = Depends(get_db)):
+def calendar_callback(request: FastAPIRequest, state: str, code: str, db: Session = Depends(get_db)):
     # Verify we got standard params
     if not code or not state:
         raise HTTPException(status_code=400, detail="Missing auth code or state")
