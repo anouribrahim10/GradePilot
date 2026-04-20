@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, BookOpen, AlertCircle, X } from "lucide-react";

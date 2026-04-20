@@ -68,7 +68,7 @@ export async function backendFetch<T>(
 
   if (!res.ok) {
     const message =
-      (body && typeof body === 'object' && 'detail' in body && (body as any).detail) ||
+      (body && typeof body === 'object' && 'detail' in body && (body as { detail: string }).detail) ||
       `Request failed (${res.status})`;
     throw new BackendError(String(message), res.status, body);
   }

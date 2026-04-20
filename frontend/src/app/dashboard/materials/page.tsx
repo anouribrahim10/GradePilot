@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useId, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BookOpen, FileText, Sparkles, Upload, X } from 'lucide-react';
