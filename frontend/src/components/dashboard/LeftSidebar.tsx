@@ -5,17 +5,29 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
-import { syncCalendarEvents } from "@/lib/backend";
+import { syncCalendarEvents, checkCalendarConnection, getCalendarAuthUrl } from "@/lib/backend";
 
 export default function LeftSidebar() {
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    checkCalendarConnection()
+      .then(res => setIsConnected(res.connected))
+      .catch(err => console.error("Could not check calendar status", err));
+  }, []);
 
   const handleSync = async () => {
     try {
       setIsSyncing(true);
-      await syncCalendarEvents();
+      if (!isConnected) {
+        const { url } = await getCalendarAuthUrl();
+        window.location.href = url;
+      } else {
+        await syncCalendarEvents();
+      }
     } catch (err) {
-      console.error("Failed to sync calendar", err);
+      console.error("Failed to action calendar", err);
     } finally {
       setIsSyncing(false);
     }
@@ -56,14 +68,14 @@ export default function LeftSidebar() {
       <button 
         onClick={handleSync}
         disabled={isSyncing}
-        title="Sync Calendar Data"
+        title={isConnected ? "Sync Calendar Data" : "Connect Google Calendar"}
         className={`flex items-center justify-between w-full py-4 px-5 rounded-[1.25rem] bg-[#23283c] border border-white/[0.03] mb-7 shadow-sm transition-all ${isSyncing ? "opacity-50 cursor-not-allowed" : "hover:bg-[#2a3047] cursor-pointer"}`}
       >
         <div className="flex items-center gap-3.5">
           <svg className="w-[18px] h-[18px] text-[#36d3b7]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <span className="text-white font-extrabold text-[13px] tracking-wide">{isSyncing ? "Syncing..." : "Sync Google Calendar"}</span>
+          <span className="text-white font-extrabold text-[13px] tracking-wide">{isSyncing ? (isConnected ? "Syncing..." : "Connecting...") : (isConnected ? "Sync Google Calendar" : "Connect Calendar")}</span>
         </div>
         <svg className={`w-4 h-4 text-slate-400 ${isSyncing ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

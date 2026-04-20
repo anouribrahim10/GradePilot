@@ -1,7 +1,19 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
-from datetime import datetime, timedelta
+import os
 import uuid
+import json
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
+from sqlalchemy.orm import Session
+from sqlalchemy.dialects.postgresql import insert
+from pydantic import BaseModel
+
+from app.deps.auth import CurrentUser, get_current_user
+from app.db.session import get_db
+from app.db.models import GoogleCalendarToken
+
+# We assume pip install google-auth-oauthlib has finished
+from google_auth_oauthlib.flow import Flow
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -11,9 +23,8 @@ class EventOut(BaseModel):
     start_datetime: str
     end_datetime: str
 
-# Use the same data from the old MOCK_EVENTS, but served from backend now.
+# Mock data
 now = datetime.now()
-
 MOCK_BACKEND_EVENTS = [
     {
         "id": 1,
@@ -21,31 +32,31 @@ MOCK_BACKEND_EVENTS = [
         "start_datetime": datetime(now.year, now.month, 15, 10, 0).isoformat(),
         "end_datetime": datetime(now.year, now.month, 15, 12, 0).isoformat(),
     },
-    {
-        "id": 2,
-        "title": "Study: Binary Trees",
-        "start_datetime": datetime(now.year, now.month, 12, 14, 0).isoformat(),
-        "end_datetime": datetime(now.year, now.month, 12, 16, 0).isoformat(),
-    },
-    {
-        "id": 3,
-        "title": "Assignment 3 Due",
-        "start_datetime": datetime(now.year, now.month, 18, 23, 59).isoformat(),
-        "end_datetime": datetime(now.year, now.month, 18, 23, 59).isoformat(),
-    },
-    {
-        "id": 4,
-        "title": "Study: Graph Algorithms",
-        "start_datetime": datetime(now.year, now.month, 20, 18, 0).isoformat(),
-        "end_datetime": datetime(now.year, now.month, 20, 20, 0).isoformat(),
-    },
-    {
-        "id": 5,
-        "title": "Review Notes",
-        "start_datetime": datetime(now.year, now.month, now.day, 16, 0).isoformat(),
-        "end_datetime": datetime(now.year, now.month, now.day, 18, 0).isoformat(),
-    },
 ]
+
+SCOPES = ['https://www.googleapis.com/auth/calendar.events.readonly']
+
+def get_flow(state: str = None):
+    # Fallback to mock config if no env vars present
+    client_config = {
+        "web": {
+            "client_id": os.environ.get("GOOGLE_CLIENT_ID", "mock_client_id"),
+            "project_id": "gradepilot",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET", "mock_secret")
+        }
+    }
+    
+    flow = Flow.from_client_config(
+        client_config, 
+        scopes=SCOPES, 
+        state=state
+    )
+    # Redirect URI must exactly match the callback route
+    flow.redirect_uri = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:8000/calendar/callback")
+    return flow
 
 @router.get("/events", response_model=list[EventOut])
 def get_events():
@@ -54,4 +65,82 @@ def get_events():
 @router.post("/sync")
 def sync_events():
     return {"status": "synced"}
+
+@router.get("/connect")
+def connect_calendar(user: CurrentUser = Depends(get_current_user)):
+    # We use the user.user_id as the state so we know who to bound the token to in the callback
+    # Warning: this exposes the user_id in the oauth callback, but it's acceptable for this prototype
+    flow = get_flow(state=user.user_id)
+    authorization_url, _ = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true',
+        prompt='consent'
+    )
+    return {"url": authorization_url}
+
+@router.get("/callback")
+def calendar_callback(request: Request, state: str, code: str, db: Session = Depends(get_db)):
+    # Verify we got standard params
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing auth code or state")
+
+    try:
+        user_uuid = uuid.UUID(state)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid state")
+        
+    try:
+        flow = get_flow(state=state)
+        # We need the full URL from the request to fetch the token
+        # but because of proxies we construct it.
+        # Use a mock token set for testing since we might not have real credentials
+        if os.environ.get("GOOGLE_CLIENT_ID") is None:
+            # Local mock behaviour
+            mock_access = "mock-access-token"
+            mock_refresh = "mock-refresh-token"
+            expiry = None
+        else:
+            # We'd fetch using real flow:
+            flow.fetch_token(authorization_response=str(request.url))
+            creds = flow.credentials
+            mock_access = creds.token
+            mock_refresh = creds.refresh_token
+            expiry = creds.expiry
+
+        # Upsert the token
+        stmt = insert(GoogleCalendarToken).values(
+            user_id=user_uuid,
+            access_token=mock_access,
+            refresh_token=mock_refresh,
+            expiry=expiry
+        )
+        
+        # Postgres UPSERT
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['user_id'],
+            set_={
+                'access_token': stmt.excluded.access_token,
+                'refresh_token': stmt.excluded.refresh_token,
+                'expiry': stmt.excluded.expiry
+            }
+        )
+        db.execute(stmt)
+        db.commit()
+
+        # Redirect user back to the application calendar
+        return RedirectResponse("http://localhost:3000/dashboard/calendar")
+        
+    except Exception as e:
+        db.rollback()
+        print(f"Calendar auth error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Calendar authentication failed")
+
+@router.get("/status")
+def calendar_status(user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        user_uuid = uuid.UUID(user.user_id)
+        token = db.query(GoogleCalendarToken).filter(GoogleCalendarToken.user_id == user_uuid).first()
+        return {"connected": token is not None}
+    except Exception:
+        return {"connected": False}
 

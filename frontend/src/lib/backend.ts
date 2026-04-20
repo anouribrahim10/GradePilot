@@ -174,3 +174,12 @@ export function syncCalendarEvents() {
     method: 'POST',
   });
 }
+
+export function checkCalendarConnection() {
+  return backendFetch<{ connected: boolean }>('/calendar/status');
+}
+
+export function getCalendarAuthUrl() {
+  return backendFetch<{ url: string }>('/calendar/connect');
+}
+

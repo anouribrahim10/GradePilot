@@ -27,6 +27,8 @@ def _get_sessionmaker() -> sessionmaker[Session]:
     global _ENGINE, _SessionLocal
     if _SessionLocal is None:
         _ENGINE = get_engine()
+        from app.db.models import Base
+        Base.metadata.create_all(bind=_ENGINE)
         _SessionLocal = sessionmaker(bind=_ENGINE, autocommit=False, autoflush=False)
     return _SessionLocal
 

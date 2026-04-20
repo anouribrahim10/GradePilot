@@ -30,12 +30,26 @@ export default function CalendarPage() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    import("@/lib/backend").then(({ checkCalendarConnection }) => {
+      checkCalendarConnection()
+        .then(res => setIsConnected(res.connected))
+        .catch(err => console.error("Could not check calendar status", err));
+    });
+  }, []);
 
   const handleSync = async () => {
     try {
       setIsSyncing(true);
-      await syncCalendarEvents();
-      // Optional: re-fetch events here if needed, keeping simple for now
+      if (!isConnected) {
+        const { getCalendarAuthUrl } = await import("@/lib/backend");
+        const { url } = await getCalendarAuthUrl();
+        window.location.href = url;
+      } else {
+        await import("@/lib/backend").then(m => m.syncCalendarEvents());
+      }
     } catch (err) {
       console.error("Failed to sync calendar", err);
     } finally {
@@ -221,7 +235,7 @@ export default function CalendarPage() {
               <button 
                 onClick={handleSync}
                 disabled={isSyncing}
-                title="Sync with Google Calendar"
+                title={isConnected ? "Sync with Google Calendar" : "Connect Google Calendar"}
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all border",
                   isSyncing 
@@ -230,12 +244,12 @@ export default function CalendarPage() {
                 )}
               >
                 <RefreshCw className={cn("w-3.5 h-3.5", isSyncing && "animate-spin")} />
-                {isSyncing ? "Syncing..." : "Sync to Google"}
+                {isSyncing ? (isConnected ? "Syncing..." : "Connecting...") : (isConnected ? "Sync to Google" : "Connect Google")}
               </button>
               <button 
                 onClick={handleSync}
                 disabled={isSyncing}
-                title="Sync Calendar Data"
+                title={isConnected ? "Sync Calendar Data" : "Connect Calendar"}
                 className={cn(
                   "p-1.5 rounded-lg flex items-center justify-center relative group transition-all border",
                   isSyncing
