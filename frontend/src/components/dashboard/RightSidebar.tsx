@@ -63,7 +63,7 @@ export default function RightSidebar() {
               2:00 PM
             </p>
             <p className="text-rose-400/90 text-[11px] mt-1.5 leading-relaxed font-bold border-l-2 border-rose-500/30 pl-3 ml-[-12px]">
-              Rearranged CS 101 study schedule because you missed yesterday's session.
+              Rearranged CS 101 study schedule because you missed yesterday&apos;s session.
             </p>
           </div>
 

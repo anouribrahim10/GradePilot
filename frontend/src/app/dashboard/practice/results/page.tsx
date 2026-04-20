@@ -43,6 +43,7 @@ export default function PracticeResultsPage() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchQuestions(); }, []);
 
   const toggleReveal = (i: number) => {
