@@ -73,6 +73,9 @@ jobs:
           npm ci
 
       - name: Build frontend
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
         run: |
           cd frontend
           npm run build
