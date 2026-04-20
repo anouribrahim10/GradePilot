@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+
 import React, { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, FileText, Tag, Calendar, BookOpen } from "lucide-react";
