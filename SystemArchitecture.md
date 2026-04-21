@@ -45,37 +45,7 @@ flowchart LR
 
 This diagram shows the main feature of turning uploaded class notes into an AI-built study plan. It covers the three tables that work together to make that happen.
 
-```mermaid
-erDiagram
-    CLASS ||--o{ CLASS_NOTES : has
-    CLASS ||--o{ STUDY_PLAN : has
-    CLASS_NOTES ||--o{ STUDY_PLAN : sourceFor
-
-    CLASS {
-        uuid id PK
-        uuid user_id
-        string title
-        timestamp created_at
-    }
-
-    CLASS_NOTES {
-        uuid id PK
-        uuid class_id FK
-        uuid user_id
-        text notes_text
-        timestamp created_at
-    }
-
-    STUDY_PLAN {
-        uuid id PK
-        uuid class_id FK
-        uuid source_notes_id FK
-        uuid user_id
-        jsonb plan_json
-        string model
-        timestamp created_at
-    }
-```
+![GradePilot entity diagram for notes and study plans](docs/architecture/entity-diagram.png)
 
 **Description.** A Class is one of the student's courses, like Math 101. Inside a class, the student can upload notes, and each upload becomes a ClassNotes row that stores the text. From those notes, the AI builds a StudyPlan, which links back to the class it belongs to and the notes it was built from. Every row also tracks who owns it so students only see their own stuff, and if a class is deleted all the notes and plans inside get cleaned up automatically.
 
