@@ -1,0 +1,9 @@
+***High-Level Component Diagram***
+<img width="1228" height="826" alt="mermaid-diagram (3)" src="https://github.com/user-attachments/assets/842f7539-4a57-45d1-819a-0087c2e0bd90" />
+Explanation: The user interacts with the frontend, which is where all inputs and actions start. From there, the frontend sends requests to the backend, which handles the main logic of the application. The backend communicates with the database to store and retrieve data as needed, and it also connects to the AI service to generate things like study plans. In addition, any files uploaded by the user are stored using Supabase Storage, which allows the system to manage and access those files efficiently.
+***Relationship Diagram***
+<img width="1052" height="1634" alt="mermaid-diagram (1)" src="https://github.com/user-attachments/assets/de98fd71-f782-4558-92f4-33c4c5385e24" />
+Explanation: A user can create multiple notes within the system, allowing them to keep track of different pieces of information. In addition to notes, a user can also have multiple study plans, which helps organize their academic workload. Each study plan is made up of several tasks, where each task represents a specific assignment or activity that needs to be completed.
+***Flow Diagram***
+<img width="2632" height="1078" alt="mermaid-diagram (2)" src="https://github.com/user-attachments/assets/532b234a-104a-412f-a9a1-edfaec87b5c5" />
+Explanation: The user starts by entering their information into the system through the frontend. Once the input is submitted, the frontend sends it to the backend, which handles the processing. The backend then requests the AI service to generate a study plan based on the provided details. After receiving the generated plan, the backend saves it in the database so it can be accessed later. Finally, the completed study plan is sent back through the frontend and displayed to the user.
