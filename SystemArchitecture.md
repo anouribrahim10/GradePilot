@@ -5,38 +5,11 @@ GradePilot is an autonomous academic planning agent. The system is designed to a
 
 ## Architecture Diagram
 
-```mermaid
-flowchart TD
-    Client[Client Browser] --> Frontend[Frontend: React + Vite SPA]
-    Frontend --> Backend[Backend: FastAPI (Python 3.12)]
-    
-    subgraph "GCP Cloud Run"
-        Backend
-        LangChain[AI Pipeline: LangChain]
-        LangGraph[Stateful Agent: LangGraph]
-    end
-    
-    Backend <--> LangChain
-    Backend <--> LangGraph
-    
-    LangChain <--> LLM[LLM Provider: Google Gemini 1.5 Pro]
-    LangGraph <--> LLM
-    
-    Backend <--> DB[(Database: Supabase PostgreSQL)]
-    
-    Backend <--> GCal[Google Calendar API]
-    LangGraph <--> GCal
-```
+![Architecture Diagram](./docs/step1.webp)
 
-## Components
-- **Frontend**: A React and Vite-based Single Page Application providing the student dashboard and admin views.
-- **Backend**: A FastAPI server written in Python 3.12, handling REST endpoints, database interactions, and orchestrating AI workflows.
-- **AI Orchestration**: 
-  - **LangChain**: Used for fixed pipelines like PDF ingestion, RAG over course materials, and task extraction.
-  - **LangGraph**: Used as a stateful agent for adaptive re-scheduling, evaluating tasks, and updating external services.
-- **LLM Provider**: Google Gemini 1.5 Pro serves as the intelligence layer, abstracted by LangChain to ensure the model provider is swappable.
-- **Database**: Supabase (PostgreSQL) handles data storage and authentication. Accessed solely via the backend.
-- **External Integrations**: Google Calendar API is used to sync study schedules and deadlines.
+## Architecture Components and Interaction
+
+The GradePilot system architecture consists of four primary layers. The **Client Layer** provides a Next.js Frontend for the student user, containing Dashboard Pages and Upload/Input Forms. This frontend communicates directly with the **Application Layer**, which utilizes Next.js API Routes to handle backend operations such as Authentication Checks and Study Plan Logic. The application layer securely accesses the **Data Layer**, consisting of Supabase Database and Supabase Storage, to retrieve and persist user data and documents. Finally, the **External Services** layer integrates an AI Service that is utilized by the Study Plan Logic to analyze inputs and generate tailored academic content for the users.
 
 ## Infrastructure and Deployment
 - **Containerization**: Multi-stage Docker builds.
