@@ -6,7 +6,22 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Class, ClassNotes, Deadline, Document, DocumentChunk, StudyPlan
+from app.db.models import (
+    ChatMessage,
+    ChatSession,
+    ChatState,
+    CalendarEventLink,
+    Class,
+    ClassNotes,
+    Deadline,
+    Document,
+    DocumentChunk,
+    GoogleIntegration,
+    StudyPlan,
+    UserSettings,
+)
+
+from app.services.chat.onboarding import initial_state, welcome_message
 
 
 def list_classes(*, db: Session, user_id: uuid.UUID) -> list[Class]:
@@ -180,3 +195,232 @@ def bulk_create_document_chunks(
     db.add_all(chunks)
     db.commit()
     return len(chunks)
+
+
+def get_active_chat_session(*, db: Session, user_id: uuid.UUID) -> ChatSession | None:
+    stmt = (
+        select(ChatSession)
+        .where(ChatSession.user_id == user_id, ChatSession.status == "active")
+        .order_by(desc(ChatSession.created_at))
+        .limit(1)
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def create_chat_session(*, db: Session, user_id: uuid.UUID) -> ChatSession:
+    session = ChatSession(user_id=user_id, status="active")
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    # Create initial state row + first assistant message (materials-first onboarding).
+    st = ChatState(
+        session_id=session.id, user_id=user_id, state_json=initial_state()
+    )
+    db.add(st)
+    db.commit()
+    add_chat_message(
+        db=db,
+        user_id=user_id,
+        session_id=session.id,
+        role="assistant",
+        content=welcome_message(),
+    )
+    db.refresh(session)
+    return session
+
+
+def get_chat_session(
+    *, db: Session, user_id: uuid.UUID, session_id: uuid.UUID
+) -> ChatSession | None:
+    stmt = select(ChatSession).where(
+        ChatSession.id == session_id, ChatSession.user_id == user_id
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def list_chat_messages(
+    *, db: Session, user_id: uuid.UUID, session_id: uuid.UUID
+) -> list[ChatMessage]:
+    stmt = (
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session_id, ChatMessage.user_id == user_id)
+        .order_by(ChatMessage.created_at)
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def add_chat_message(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID,
+    role: str,
+    content: str,
+) -> ChatMessage:
+    msg = ChatMessage(
+        user_id=user_id, session_id=session_id, role=role, content=content
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    return msg
+
+
+def get_chat_state(
+    *, db: Session, user_id: uuid.UUID, session_id: uuid.UUID
+) -> ChatState | None:
+    stmt = select(ChatState).where(
+        ChatState.session_id == session_id, ChatState.user_id == user_id
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def update_chat_state(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID,
+    state_json: dict[str, Any],
+) -> ChatState:
+    st = get_chat_state(db=db, user_id=user_id, session_id=session_id)
+    if st is None:
+        st = ChatState(session_id=session_id, user_id=user_id, state_json=state_json)
+        db.add(st)
+        db.commit()
+        db.refresh(st)
+        return st
+    st.state_json = state_json
+    db.add(st)
+    db.commit()
+    db.refresh(st)
+    return st
+
+
+def upsert_google_integration(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    refresh_token: str,
+    access_token: str | None,
+    token_expiry: Any | None,
+    scopes: str,
+) -> GoogleIntegration:
+    stmt = select(GoogleIntegration).where(GoogleIntegration.user_id == user_id)
+    existing = db.execute(stmt).scalar_one_or_none()
+    if existing is None:
+        existing = GoogleIntegration(
+            user_id=user_id,
+            refresh_token=refresh_token,
+            access_token=access_token,
+            token_expiry=token_expiry,
+            scopes=scopes,
+        )
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    existing.refresh_token = refresh_token
+    existing.access_token = access_token
+    existing.token_expiry = token_expiry
+    existing.scopes = scopes
+    db.add(existing)
+    db.commit()
+    db.refresh(existing)
+    return existing
+
+
+def get_google_integration(
+    *, db: Session, user_id: uuid.UUID
+) -> GoogleIntegration | None:
+    stmt = select(GoogleIntegration).where(GoogleIntegration.user_id == user_id)
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def get_calendar_event_link(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    kind: str,
+    local_id: str,
+) -> CalendarEventLink | None:
+    stmt = select(CalendarEventLink).where(
+        CalendarEventLink.user_id == user_id,
+        CalendarEventLink.kind == kind,
+        CalendarEventLink.local_id == local_id,
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def upsert_calendar_event_link(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    class_id: uuid.UUID,
+    kind: str,
+    local_id: str,
+    google_calendar_id: str,
+    google_event_id: str,
+) -> CalendarEventLink:
+    link = get_calendar_event_link(db=db, user_id=user_id, kind=kind, local_id=local_id)
+    if link is None:
+        link = CalendarEventLink(
+            user_id=user_id,
+            class_id=class_id,
+            kind=kind,
+            local_id=local_id,
+            google_calendar_id=google_calendar_id,
+            google_event_id=google_event_id,
+        )
+        db.add(link)
+        db.commit()
+        db.refresh(link)
+        return link
+    link.class_id = class_id
+    link.google_calendar_id = google_calendar_id
+    link.google_event_id = google_event_id
+    db.add(link)
+    db.commit()
+    db.refresh(link)
+    return link
+
+
+def get_user_settings(*, db: Session, user_id: uuid.UUID) -> UserSettings | None:
+    stmt = select(UserSettings).where(UserSettings.user_id == user_id)
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def upsert_user_settings(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    notifications_enabled: bool | None = None,
+    days_before_deadline: int | None = None,
+    timezone: str | None = None,
+) -> UserSettings:
+    existing = get_user_settings(db=db, user_id=user_id)
+    if existing is None:
+        existing = UserSettings(
+            user_id=user_id,
+            notifications_enabled=(
+                notifications_enabled if notifications_enabled is not None else True
+            ),
+            days_before_deadline=(
+                days_before_deadline if days_before_deadline is not None else 3
+            ),
+            timezone=timezone,
+        )
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        return existing
+
+    if notifications_enabled is not None:
+        existing.notifications_enabled = notifications_enabled
+    if days_before_deadline is not None:
+        existing.days_before_deadline = days_before_deadline
+    if timezone is not None:
+        existing.timezone = timezone
+    db.add(existing)
+    db.commit()
+    db.refresh(existing)
+    return existing

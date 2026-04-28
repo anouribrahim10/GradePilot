@@ -32,6 +32,10 @@ class Settings:
     google_model: str
     google_embedding_model: str
 
+    google_oauth_client_id: str | None
+    google_oauth_client_secret: str | None
+    google_oauth_redirect_uri: str | None
+
 
 def get_settings() -> Settings:
     supabase_url = _get_env("SUPABASE_URL")
@@ -55,9 +59,11 @@ def get_settings() -> Settings:
         database_url=database_url,
         google_api_key=os.getenv("GOOGLE_API_KEY"),
         google_model=os.getenv("GOOGLE_MODEL", "gemini-2.5-flash"),
-        # Must support embedContent on the Gemini API (see google.generativeai.embed_content).
-        # text-embedding-004 is not valid for this SDK; embedding-001 is 768-dim and matches Vector(768).
+        # Used by the google-genai SDK (Gemini Developer API). Can be overridden via env.
         google_embedding_model=os.getenv(
-            "GOOGLE_EMBEDDING_MODEL", "models/embedding-001"
+            "GOOGLE_EMBEDDING_MODEL", "models/gemini-embedding-001"
         ),
+        google_oauth_client_id=os.getenv("GOOGLE_OAUTH_CLIENT_ID"),
+        google_oauth_client_secret=os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
+        google_oauth_redirect_uri=os.getenv("GOOGLE_OAUTH_REDIRECT_URI"),
     )

@@ -137,3 +137,95 @@ class ClassAskSource(BaseModel):
 class ClassAskOut(BaseModel):
     answer: str
     sources: list[ClassAskSource]
+
+
+class ChatSessionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    status: str
+    created_at: datetime
+
+
+class ChatMessageIn(BaseModel):
+    content: str = Field(min_length=1, max_length=8000)
+
+
+class ChatMessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    session_id: uuid.UUID
+    user_id: uuid.UUID
+    role: str
+    content: str
+    created_at: datetime
+
+
+class ChatStateOut(BaseModel):
+    state: dict[str, Any]
+
+
+class ChatToolAction(BaseModel):
+    type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChatReplyOut(BaseModel):
+    session: ChatSessionOut
+    messages: list[ChatMessageOut]
+    state: dict[str, Any]
+    tool_actions: list[ChatToolAction] = Field(default_factory=list)
+
+
+class DeadlineImportOut(BaseModel):
+    created: int
+
+
+class StudyAvailabilityBlock(BaseModel):
+    day: str = Field(min_length=1, max_length=20)  # e.g. Mon, Tuesday
+    start_time: str = Field(min_length=1, max_length=10)  # e.g. 17:00
+    end_time: str = Field(min_length=1, max_length=10)  # e.g. 21:00
+
+
+class StudyPlanSemesterTaskAI(BaseModel):
+    title: str
+    estimated_hours: float = Field(ge=0.5, le=8.0)
+    deadline_id: str | None = None
+
+
+class StudyPlanSemesterWeekAI(BaseModel):
+    week: int = Field(ge=1)
+    start: str
+    end: str
+    goals: list[str]
+    tasks: list[StudyPlanSemesterTaskAI]
+
+
+class StudyPlanSemesterAI(BaseModel):
+    title: str
+    timezone: str
+    semester_start: str
+    semester_end: str
+    weeks: list[StudyPlanSemesterWeekAI]
+
+
+class StudyPlanSemesterCreate(BaseModel):
+    semester_start: str = Field(min_length=1, max_length=40)
+    semester_end: str = Field(min_length=1, max_length=40)
+    timezone: str = Field(min_length=1, max_length=60)
+    availability: list[StudyAvailabilityBlock] | None = None
+
+
+class UserSettingsOut(BaseModel):
+    notificationsEnabled: bool
+    daysBeforeDeadline: int
+    googleConnected: bool
+    timezone: str | None = None
+
+
+class UserSettingsUpdate(BaseModel):
+    notificationsEnabled: bool | None = None
+    daysBeforeDeadline: int | None = Field(default=None, ge=1, le=14)
+    timezone: str | None = Field(default=None, max_length=60)

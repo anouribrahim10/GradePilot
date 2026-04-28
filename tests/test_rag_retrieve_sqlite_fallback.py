@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import uuid
 
+from _pytest.monkeypatch import MonkeyPatch
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from app.db.models import Base, Class, Document, DocumentChunk
 from app.services.rag.retrieve import retrieve_chunks
 
 
-def test_retrieve_chunks_sqlite_fallback_ordering(monkeypatch) -> None:
+def test_retrieve_chunks_sqlite_fallback_ordering(monkeypatch: MonkeyPatch) -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     SessionLocal = sessionmaker(bind=engine)
@@ -59,7 +60,9 @@ def test_retrieve_chunks_sqlite_fallback_ordering(monkeypatch) -> None:
         )
         db.commit()
 
-        monkeypatch.setattr("app.services.rag.retrieve.embed_query", lambda *, text: [0.0])
+        monkeypatch.setattr(
+            "app.services.rag.retrieve.embed_query", lambda *, text: [0.0]
+        )
 
         out = retrieve_chunks(
             db=db,
@@ -69,4 +72,3 @@ def test_retrieve_chunks_sqlite_fallback_ordering(monkeypatch) -> None:
             k=2,
         )
         assert [c.chunk_index for c in out] == [0, 1]
-

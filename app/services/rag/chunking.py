@@ -95,4 +95,3 @@ def chunk_text(
 
     flush()
     return chunks
-

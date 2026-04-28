@@ -158,6 +158,21 @@ export function createStudyPlan(classId: string, notesId?: string) {
   });
 }
 
+export function createSemesterStudyPlan(
+  classId: string,
+  payload: {
+    semester_start: string;
+    semester_end: string;
+    timezone: string;
+    availability?: { day: string; start_time: string; end_time: string }[] | null;
+  }
+) {
+  return backendFetch<StudyPlanOut>(`/classes/${classId}/study-plan/semester`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function listDeadlines(classId: string) {
   return backendFetch<DeadlineOut[]>(`/classes/${classId}/deadlines`);
 }
@@ -175,6 +190,35 @@ export function deleteDeadline(classId: string, deadlineId: string) {
   });
 }
 
+export function importDeadlinesFromSyllabus(classId: string, file: File) {
+  return (async () => {
+    const token = await getAccessToken();
+    const body = new FormData();
+    body.append('file', file, file.name);
+    const res = await fetch(`${BACKEND_URL}/classes/${classId}/deadlines/import`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body,
+    });
+    const contentType = res.headers.get('content-type') ?? '';
+    const parsed = contentType.includes('application/json')
+      ? await res.json().catch(() => null)
+      : await res.text().catch(() => null);
+    if (!res.ok) {
+      const message =
+        (parsed &&
+          typeof parsed === 'object' &&
+          'detail' in parsed &&
+          String((parsed as ErrorBody)?.detail ?? '')) ||
+        `Request failed (${res.status})`;
+      throw new BackendError(String(message), res.status, parsed);
+    }
+    return parsed as { created: number };
+  })();
+}
+
 export type SummariseOut = {
   title: string;
   summary: string;
@@ -187,6 +231,24 @@ export function summariseDocument(filename: string, raw_text: string) {
   return backendFetch<SummariseOut>('/summarise', {
     method: 'POST',
     body: JSON.stringify({ filename, raw_text }),
+  });
+}
+
+export type UserSettingsOut = {
+  notificationsEnabled: boolean;
+  daysBeforeDeadline: number;
+  googleConnected: boolean;
+  timezone: string | null;
+};
+
+export function getUserSettings() {
+  return backendFetch<UserSettingsOut>('/settings');
+}
+
+export function updateUserSettings(payload: Partial<UserSettingsOut>) {
+  return backendFetch<UserSettingsOut>('/settings', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
   });
 }
 
@@ -213,6 +275,46 @@ export type ClassAskOut = {
   answer: string;
   sources: ClassAskSource[];
 };
+
+export type ChatSessionOut = {
+  id: string;
+  user_id: string;
+  status: string;
+  created_at: string;
+};
+
+export type ChatMessageOut = {
+  id: string;
+  session_id: string;
+  user_id: string;
+  role: string;
+  content: string;
+  created_at: string;
+};
+
+export type ChatToolAction = { type: string; payload: Record<string, unknown> };
+
+export type ChatReplyOut = {
+  session: ChatSessionOut;
+  messages: ChatMessageOut[];
+  state: Record<string, unknown>;
+  tool_actions: ChatToolAction[];
+};
+
+export function createOrGetChatSession() {
+  return backendFetch<ChatSessionOut>('/chat/sessions', { method: 'POST' });
+}
+
+export function getChatSession(sessionId: string) {
+  return backendFetch<ChatReplyOut>(`/chat/sessions/${sessionId}`);
+}
+
+export function sendChatMessage(sessionId: string, content: string) {
+  return backendFetch<ChatReplyOut>(`/chat/sessions/${sessionId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
+}
 
 /** Index a PDF for class-scoped RAG (chunk + embed + store). */
 export async function uploadMaterialPdf(

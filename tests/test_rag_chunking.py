@@ -16,4 +16,3 @@ def test_chunk_text_overlap_nonempty() -> None:
     assert len(chunks) >= 2
     # Ensure overlap is present at chunk boundaries (best-effort check).
     assert chunks[0].text[-20:] in chunks[1].text
-

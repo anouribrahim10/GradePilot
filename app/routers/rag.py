@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.db import crud
 from app.db.session import get_db
 from app.deps.auth import CurrentUser, get_current_user
-from app.schemas import ClassAskOut, ClassAskRequest, MaterialIngestOut
+from app.schemas import ClassAskOut, ClassAskRequest, ClassAskSource, MaterialIngestOut
 from app.services.rag.answer import (
     RagAnswerError,
     RagAnswerRateLimitError,
@@ -72,13 +72,15 @@ async def upload_material(
             raw_text=raw_text or "",
             document_type=document_type,
         )
-        return MaterialIngestOut(document_id=result.document_id, chunks_created=result.chunks_created)
+        return MaterialIngestOut(
+            document_id=result.document_id, chunks_created=result.chunks_created
+        )
     except EmbeddingsError as e:
         raise HTTPException(
             status_code=502,
             detail=(
                 f"Embeddings failed: {e}. "
-                "Check GOOGLE_EMBEDDING_MODEL (default models/embedding-001) and GOOGLE_API_KEY."
+                "Check GOOGLE_EMBEDDING_MODEL (default models/gemini-embedding-001) and GOOGLE_API_KEY."
             ),
         ) from e
     except ProgrammingError as e:
@@ -119,7 +121,7 @@ def ask_class(
             status_code=502,
             detail=(
                 f"Embeddings failed: {e}. "
-                "Check GOOGLE_EMBEDDING_MODEL (default models/embedding-001) and GOOGLE_API_KEY."
+                "Check GOOGLE_EMBEDDING_MODEL (default models/gemini-embedding-001) and GOOGLE_API_KEY."
             ),
         ) from e
     if not chunks:
@@ -141,14 +143,13 @@ def ask_class(
     return ClassAskOut(
         answer=out.answer,
         sources=[
-            {
-                "document_id": s.document_id,
-                "filename": s.filename,
-                "document_type": s.document_type,
-                "chunk_index": s.chunk_index,
-                "snippet": s.snippet,
-            }
+            ClassAskSource(
+                document_id=s.document_id,
+                filename=s.filename,
+                document_type=s.document_type,
+                chunk_index=s.chunk_index,
+                snippet=s.snippet,
+            )
             for s in out.sources
         ],
     )
-

@@ -88,4 +88,3 @@ def ingest_raw_text(
 
     created = crud.bulk_create_document_chunks(db=db, chunks=chunk_rows)
     return IngestResult(document_id=doc.id, chunks_created=created)
-

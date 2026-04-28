@@ -18,7 +18,7 @@ create table if not exists public.documents (
 create index if not exists ix_documents_class_id on public.documents (class_id);
 create index if not exists ix_documents_user_id on public.documents (user_id);
 
--- embedding-001 uses 768 dimensions (matches app/db/models.py Vector(768))
+-- gemini-embedding-001 is configured to return 768 dims (matches app/db/models.py Vector(768))
 create table if not exists public.document_chunks (
   id uuid primary key,
   document_id uuid not null references public.documents (id) on delete cascade,

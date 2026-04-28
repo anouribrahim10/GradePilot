@@ -5,7 +5,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from app.deps.auth import CurrentUser, get_current_user
 from app.schemas import ExtractPdfOut, SummariseOut, SummariseRequest
 from app.services.pdf_text import extract_text_from_pdf_bytes
-from app.services.summarise import SummariseError, SummariseRateLimitError, summarise_document
+from app.services.summarise import (
+    SummariseError,
+    SummariseRateLimitError,
+    summarise_document,
+)
 
 router = APIRouter(prefix="/summarise", tags=["summarise"])
 
@@ -49,7 +53,5 @@ async def extract_pdf_endpoint(
     try:
         raw_text = extract_text_from_pdf_bytes(data)
     except Exception as e:  # noqa: BLE001 — surface parse failures to client
-        raise HTTPException(
-            status_code=400, detail=f"Could not read PDF: {e}"
-        ) from e
+        raise HTTPException(status_code=400, detail=f"Could not read PDF: {e}") from e
     return ExtractPdfOut(filename=name, raw_text=raw_text)

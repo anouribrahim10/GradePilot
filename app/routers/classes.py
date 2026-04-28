@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db import crud
@@ -13,13 +13,21 @@ from app.schemas import (
     ClassOut,
     DeadlineCreate,
     DeadlineOut,
+    DeadlineImportOut,
     NotesCreate,
     NotesOut,
     PracticeGenerateOut,
     PracticeGenerateRequest,
     StudyPlanCreate,
     StudyPlanOut,
+    StudyPlanSemesterCreate,
 )
+from app.services.deadlines.extract import (
+    DeadlineExtractError,
+    DeadlineExtractRateLimitError,
+    extract_deadlines_from_text,
+)
+from app.services.pdf_text import extract_text_from_pdf_bytes
 from app.services.practice import (
     PracticeGenerationError,
     PracticeRateLimitError,
@@ -29,6 +37,11 @@ from app.services.study_plan import (
     StudyPlanGenerationError,
     StudyPlanRateLimitError,
     generate_study_plan,
+)
+from app.services.study_plan_semester import (
+    SemesterStudyPlanGenerationError,
+    SemesterStudyPlanRateLimitError,
+    generate_semester_study_plan,
 )
 
 router = APIRouter(prefix="/classes", tags=["classes"])
@@ -164,6 +177,66 @@ def create_study_plan_endpoint(
     return StudyPlanOut.model_validate(plan)
 
 
+@router.post("/{class_id}/study-plan/semester", response_model=StudyPlanOut)
+def create_semester_study_plan_endpoint(
+    class_id: uuid.UUID,
+    payload: StudyPlanSemesterCreate,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StudyPlanOut:
+    user_id = _user_uuid(user)
+    clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
+    if clazz is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    deadlines = crud.list_deadlines(db=db, user_id=user_id, class_id=class_id)
+    deadline_payload = [
+        {
+            "id": str(d.id),
+            "title": d.title,
+            "due_text": d.due_text,
+            "due_at": (d.due_at.isoformat() if d.due_at else None),
+        }
+        for d in deadlines
+    ]
+
+    availability = (
+        [
+            {"day": b.day, "start_time": b.start_time, "end_time": b.end_time}
+            for b in (payload.availability or [])
+        ]
+        if payload.availability
+        else None
+    )
+
+    try:
+        plan_json, model_name = generate_semester_study_plan(
+            class_title=clazz.title,
+            semester_start=payload.semester_start,
+            semester_end=payload.semester_end,
+            timezone=payload.timezone,
+            deadlines=deadline_payload,
+            availability=availability,
+        )
+    except SemesterStudyPlanRateLimitError as e:
+        headers = {}
+        if getattr(e, "retry_after_seconds", None):
+            headers["Retry-After"] = str(e.retry_after_seconds)
+        raise HTTPException(status_code=429, detail=str(e), headers=headers)
+    except SemesterStudyPlanGenerationError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    plan = crud.create_study_plan(
+        db=db,
+        user_id=user_id,
+        class_id=class_id,
+        source_notes_id=None,
+        plan_json=plan_json,
+        model=model_name,
+    )
+    return StudyPlanOut.model_validate(plan)
+
+
 @router.get("/{class_id}/deadlines", response_model=list[DeadlineOut])
 def list_deadlines_endpoint(
     class_id: uuid.UUID,
@@ -219,3 +292,52 @@ def delete_deadline_endpoint(
     if not ok:
         raise HTTPException(status_code=404, detail="Deadline not found")
     return {"ok": True}
+
+
+@router.post("/{class_id}/deadlines/import", response_model=DeadlineImportOut)
+async def import_deadlines_from_syllabus_endpoint(
+    class_id: uuid.UUID,
+    file: UploadFile = File(...),
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DeadlineImportOut:
+    user_id = _user_uuid(user)
+    clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
+    if clazz is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    name = (file.filename or "").strip() or "syllabus.pdf"
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if not name.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Upload a .pdf file")
+
+    try:
+        raw_text = extract_text_from_pdf_bytes(data)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Could not read PDF: {e}") from e
+
+    try:
+        extracted = extract_deadlines_from_text(filename=name, raw_text=raw_text)
+    except DeadlineExtractRateLimitError as e:
+        headers = {}
+        if getattr(e, "retry_after_seconds", None):
+            headers["Retry-After"] = str(e.retry_after_seconds)
+        raise HTTPException(status_code=429, detail=str(e), headers=headers)
+    except DeadlineExtractError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    created = 0
+    for d in extracted:
+        crud.create_deadline(
+            db=db,
+            user_id=user_id,
+            class_id=class_id,
+            title=d.title,
+            due_text=d.due_text,
+            due_at=d.due_at,
+        )
+        created += 1
+
+    return DeadlineImportOut(created=created)

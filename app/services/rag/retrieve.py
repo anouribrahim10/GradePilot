@@ -38,16 +38,16 @@ def retrieve_chunks(
     stmt = select(DocumentChunk, Document).join(
         Document, Document.id == DocumentChunk.document_id
     )
-    stmt = stmt.where(DocumentChunk.user_id == user_id, DocumentChunk.class_id == class_id)
+    stmt = stmt.where(
+        DocumentChunk.user_id == user_id, DocumentChunk.class_id == class_id
+    )
     if document_type:
         stmt = stmt.where(Document.document_type == document_type)
 
     distance_expr = None
     # pgvector operators only work on Postgres; SQLite tests store embeddings as JSON.
     if db.get_bind().dialect.name == "postgresql":
-        distance_expr = DocumentChunk.embedding.cosine_distance(qvec).label(  # type: ignore[attr-defined]
-            "distance"
-        )
+        distance_expr = DocumentChunk.embedding.cosine_distance(qvec).label("distance")
         stmt = stmt.add_columns(distance_expr).order_by(distance_expr.asc())
     else:
         stmt = stmt.order_by(DocumentChunk.chunk_index.asc())
@@ -74,4 +74,3 @@ def retrieve_chunks(
             )
         )
     return results
-

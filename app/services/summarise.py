@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, cast
 
-import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, ValidationError
 
 from app.core.config import get_settings
@@ -50,10 +50,8 @@ def summarise_document(*, filename: str, raw_text: str) -> SummaryResult:
     if not settings.google_api_key:
         raise SummariseError("GOOGLE_API_KEY is not configured")
 
-    genai_any = cast(Any, genai)
-    genai_any.configure(api_key=settings.google_api_key)
-    model_name = settings.google_model.removeprefix("models/")
-    model = genai_any.GenerativeModel(model_name)
+    client = genai.Client(api_key=settings.google_api_key)
+    model_name = settings.google_model
 
     prompt = f"""You are an expert academic assistant. A student has uploaded a document called "{filename}".
 
@@ -80,12 +78,13 @@ Document content:
 
     raw = ""
     try:
-        resp = model.generate_content(
-            prompt,
-            generation_config={
-                "temperature": 0.3,
-                "response_mime_type": "application/json",
-            },
+        resp = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                response_mime_type="application/json",
+            ),
         )
         raw = resp.text or ""
         logger.info("summarise_llm_response model=%s chars=%s", model_name, len(raw))

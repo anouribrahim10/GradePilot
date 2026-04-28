@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, cast
 
-import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import get_settings
@@ -94,21 +94,20 @@ def generate_rag_answer(*, question: str, chunks: list[RetrievedChunk]) -> RagAn
     if not settings.google_api_key:
         raise RagAnswerError("GOOGLE_API_KEY is not configured")
 
-    genai_any = cast(Any, genai)
-    genai_any.configure(api_key=settings.google_api_key)
-    model_name = settings.google_model.removeprefix("models/")
-    model = genai_any.GenerativeModel(model_name)
+    client = genai.Client(api_key=settings.google_api_key)
+    model_name = settings.google_model
 
     prompt = _build_prompt(question=question, chunks=chunks)
 
     raw = ""
     try:
-        resp = model.generate_content(
-            prompt,
-            generation_config={
-                "temperature": 0.2,
-                "response_mime_type": "application/json",
-            },
+        resp = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+                response_mime_type="application/json",
+            ),
         )
         raw = resp.text or ""
         logger.info("rag_answer_llm_response model=%s chars=%s", model_name, len(raw))
@@ -144,4 +143,3 @@ def generate_rag_answer(*, question: str, chunks: list[RetrievedChunk]) -> RagAn
     except Exception as e:  # noqa: BLE001
         logger.exception("rag_answer_failed err=%s", e.__class__.__name__)
         raise RagAnswerError(f"RAG answer failed ({e.__class__.__name__})") from e
-

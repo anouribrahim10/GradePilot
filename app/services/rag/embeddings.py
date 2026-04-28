@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, cast
+from typing import Any
 
-import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted
+from google import genai
+from google.genai import types
 
 from app.core.config import get_settings
 
 logger = logging.getLogger("gradepilot.ai")
+_DEFAULT_EMBEDDING_DIM = 768
 
 
 class EmbeddingsError(RuntimeError):
@@ -39,21 +41,23 @@ def _configure() -> tuple[Any, str]:
     settings = get_settings()
     if not settings.google_api_key:
         raise EmbeddingsError("GOOGLE_API_KEY is not configured")
-    genai_any = cast(Any, genai)
-    genai_any.configure(api_key=settings.google_api_key)
-    return genai_any, settings.google_embedding_model
+    client = genai.Client(api_key=settings.google_api_key)
+    return client, settings.google_embedding_model
 
 
 def embed_query(*, text: str) -> list[float]:
-    genai_any, model = _configure()
+    client, model = _configure()
     try:
-        resp = genai_any.embed_content(
+        resp = client.models.embed_content(
             model=model,
-            content=text,
-            task_type="RETRIEVAL_QUERY",
+            contents=text,
+            config=types.EmbedContentConfig(
+                task_type="RETRIEVAL_QUERY",
+                output_dimensionality=_DEFAULT_EMBEDDING_DIM,
+            ),
         )
-        emb = resp.get("embedding")
-        if not isinstance(emb, list) or not emb:
+        emb = resp.embeddings[0].values if getattr(resp, "embeddings", None) else None
+        if not isinstance(emb, list) or len(emb) == 0:
             raise EmbeddingsError("Embedding response missing 'embedding'")
         return [float(x) for x in emb]
     except ResourceExhausted as e:
@@ -68,21 +72,27 @@ def embed_query(*, text: str) -> list[float]:
 
 
 def embed_documents(*, texts: list[str]) -> list[list[float]]:
-    genai_any, model = _configure()
+    client, model = _configure()
     if not texts:
         return []
-    out: list[list[float]] = []
     try:
-        for t in texts:
-            resp = genai_any.embed_content(
-                model=model,
-                content=t,
+        resp = client.models.embed_content(
+            model=model,
+            contents=texts,
+            config=types.EmbedContentConfig(
                 task_type="RETRIEVAL_DOCUMENT",
-            )
-            emb = resp.get("embedding")
-            if not isinstance(emb, list) or not emb:
-                raise EmbeddingsError("Embedding response missing 'embedding'")
-            out.append([float(x) for x in emb])
+                output_dimensionality=_DEFAULT_EMBEDDING_DIM,
+            ),
+        )
+        embeddings = getattr(resp, "embeddings", None)
+        if not isinstance(embeddings, list) or not embeddings:
+            raise EmbeddingsError("Embedding response missing 'embeddings'")
+        out: list[list[float]] = []
+        for e in embeddings:
+            values = getattr(e, "values", None)
+            if not isinstance(values, list) or len(values) == 0:
+                raise EmbeddingsError("Embedding response missing 'values'")
+            out.append([float(x) for x in values])
         return out
     except ResourceExhausted as e:
         retry_after = _parse_retry_after_seconds(str(e))
@@ -93,4 +103,3 @@ def embed_documents(*, texts: list[str]) -> list[list[float]]:
     except Exception as e:  # noqa: BLE001
         logger.exception("embed_documents_failed err=%s", e.__class__.__name__)
         raise EmbeddingsError(f"Embedding failed ({e.__class__.__name__})") from e
-

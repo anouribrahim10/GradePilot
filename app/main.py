@@ -1,6 +1,9 @@
 from app.routers.auth import router as auth_router
+from app.routers.chat import router as chat_router
 from app.routers.classes import router as classes_router
+from app.routers.integrations_google import router as google_integrations_router
 from app.routers.rag import router as rag_router
+from app.routers.settings import router as settings_router
 from app.routers.summarise import router as summarise_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,8 +27,11 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(chat_router)
 app.include_router(classes_router)
+app.include_router(google_integrations_router)
 app.include_router(rag_router)
+app.include_router(settings_router)
 app.include_router(summarise_router)
 
 
