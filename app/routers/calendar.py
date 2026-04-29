@@ -1,8 +1,7 @@
 import os
 import uuid
-import json
-from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest, Response
+from datetime import timezone, timedelta
+from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest
 from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
