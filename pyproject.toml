@@ -18,6 +18,8 @@ dependencies = [
 
   "sqlalchemy",
   "psycopg[binary]",
+  "google-auth-oauthlib",
+  "google-api-python-client",
 ]
 
 [project.optional-dependencies]
