@@ -13,6 +13,8 @@ on:
 jobs:
   terraform:
     runs-on: ubuntu-latest
+    env:
+      HAS_GCP_CREDS: ${{ secrets.TERRAFORM_GCP_SA_KEY != '' }}
 
     defaults:
       run:
@@ -35,12 +37,18 @@ jobs:
           terraform_version: 1.7.0
 
       - name: Terraform Init
+        if: env.TERRAFORM_GCP_SA_KEY != ''
+        env:
+          TERRAFORM_GCP_SA_KEY: ${{ secrets.TERRAFORM_GCP_SA_KEY }}
         run: terraform init
 
       - name: Terraform Validate
         run: terraform validate
 
       - name: Terraform Plan
+        if: env.TERRAFORM_GCP_SA_KEY != ''
+        env:
+          TERRAFORM_GCP_SA_KEY: ${{ secrets.TERRAFORM_GCP_SA_KEY }}
         run: |
           terraform plan \
             -var="supabase_url=${{ secrets.SUPABASE_URL }}" \
@@ -49,7 +57,9 @@ jobs:
             -var="google_api_key=${{ secrets.GOOGLE_API_KEY }}"
 
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: env.TERRAFORM_GCP_SA_KEY != '' && github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          TERRAFORM_GCP_SA_KEY: ${{ secrets.TERRAFORM_GCP_SA_KEY }}
         run: |
           terraform apply -auto-approve \
             -var="supabase_url=${{ secrets.SUPABASE_URL }}" \
