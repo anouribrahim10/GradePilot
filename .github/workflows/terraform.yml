@@ -6,9 +6,6 @@ on:
       - main
     paths:
       - 'terraform/**'
-  pull_request:
-    paths:
-      - 'terraform/**'
 
 jobs:
   terraform:
