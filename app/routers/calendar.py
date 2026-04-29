@@ -99,7 +99,8 @@ def get_events(
 ) -> list[EventOut]:
     try:
         user_uuid = uuid.UUID(user.user_id)
-        return get_user_events(db, user_uuid)
+        raw = get_user_events(db, user_uuid)
+        return [EventOut(**e) for e in raw]
     except Exception as e:
         print(f"Error getting events: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve events")
@@ -120,7 +121,7 @@ def sync_events(
         if not token_record:
             raise HTTPException(status_code=400, detail="Calendar not connected")
 
-        creds = Credentials(
+        creds = Credentials(  # type: ignore[no-untyped-call]
             token=token_record.access_token,
             refresh_token=token_record.refresh_token,
             token_uri="https://oauth2.googleapis.com/token",
@@ -136,7 +137,7 @@ def sync_events(
         if creds.expired and creds.refresh_token:
             if os.environ.get("GOOGLE_CLIENT_ID") is not None:
                 creds.refresh(Request())
-                token_record.access_token = creds.token
+                token_record.access_token = creds.token or ""
                 if creds.expiry:
                     token_record.expiry = creds.expiry.replace(tzinfo=timezone.utc)
                 db.commit()
