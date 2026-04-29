@@ -1,6 +1,7 @@
 import os
 import uuid
 from datetime import timezone, timedelta
+from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest
 from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
@@ -33,7 +34,7 @@ class EventOut(BaseModel):
     type: str | None = "study"
 
 
-def get_user_events(db: Session, user_uuid: uuid.UUID) -> list[dict]:
+def get_user_events(db: Session, user_uuid: uuid.UUID) -> list[dict[str, Any]]:
     plans = crud.list_study_plans(db=db, user_id=user_uuid)
     events = []
 
@@ -68,7 +69,7 @@ def get_user_events(db: Session, user_uuid: uuid.UUID) -> list[dict]:
 SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 
 
-def get_flow(state: str = None):
+def get_flow(state: Optional[str] = None) -> Flow:
     # Allow local HTTP traffic for OAuth
     os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
@@ -95,7 +96,7 @@ def get_flow(state: str = None):
 @router.get("/events", response_model=list[EventOut])
 def get_events(
     user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)
-):
+) -> list[EventOut]:
     try:
         user_uuid = uuid.UUID(user.user_id)
         return get_user_events(db, user_uuid)
@@ -107,7 +108,7 @@ def get_events(
 @router.post("/sync")
 def sync_events(
     user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)
-):
+) -> dict[str, str]:
     try:
         user_uuid = uuid.UUID(user.user_id)
         token_record = (
@@ -194,7 +195,7 @@ def sync_events(
 
 
 @router.get("/connect")
-def connect_calendar(user: CurrentUser = Depends(get_current_user)):
+def connect_calendar(user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     # We use the user.user_id as the state so we know who to bound the token to in the callback
     # Warning: this exposes the user_id in the oauth callback, but it's acceptable for this prototype
     flow = get_flow(state=user.user_id)
@@ -211,7 +212,7 @@ def connect_calendar(user: CurrentUser = Depends(get_current_user)):
 @router.get("/callback")
 def calendar_callback(
     request: FastAPIRequest, state: str, code: str, db: Session = Depends(get_db)
-):
+) -> RedirectResponse:
     # Verify we got standard params
     if not code or not state:
         raise HTTPException(status_code=400, detail="Missing auth code or state")
@@ -276,7 +277,7 @@ def calendar_callback(
 @router.get("/status")
 def calendar_status(
     user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)
-):
+) -> dict[str, bool]:
     try:
         user_uuid = uuid.UUID(user.user_id)
         token = (
