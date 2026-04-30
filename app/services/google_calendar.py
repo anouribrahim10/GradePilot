@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -21,13 +21,19 @@ def _build_credentials(
     *, access_token: str | None, refresh_token: str, client_id: str, client_secret: str
 ) -> Credentials:
     # googleapiclient will refresh automatically when expired if refresh_token present.
-    return Credentials(
-        token=access_token,
-        refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=client_id,
-        client_secret=client_secret,
-        scopes=["https://www.googleapis.com/auth/calendar"],
+    # Some google-auth versions ship partial type info; avoid mypy's `no-untyped-call`
+    # by explicitly calling it through `Any`.
+    creds_ctor = cast(Any, Credentials)
+    return cast(
+        Credentials,
+        creds_ctor(
+            token=access_token,
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=["https://www.googleapis.com/auth/calendar"],
+        ),
     )
 
 
