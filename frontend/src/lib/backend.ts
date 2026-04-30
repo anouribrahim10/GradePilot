@@ -85,7 +85,21 @@ export type ClassOut = {
   id: string;
   user_id: string;
   title: string;
+  semester_start?: string | null;
+  semester_end?: string | null;
+  timezone?: string | null;
+  availability_json?: Record<string, unknown> | null;
   created_at: string;
+};
+
+export type ClassSummaryOut = {
+  clazz: ClassOut;
+  deadline_count: number;
+  next_deadline_id: string | null;
+  next_deadline_title: string | null;
+  next_deadline_due_at: string | null;
+  latest_study_plan_id: string | null;
+  latest_study_plan_created_at: string | null;
 };
 
 export type NotesOut = {
@@ -103,6 +117,7 @@ export type DeadlineOut = {
   title: string;
   due_text: string;
   due_at: string | null;
+  completed_at?: string | null;
   created_at: string;
 };
 
@@ -140,6 +155,10 @@ export function createClass(title: string) {
   });
 }
 
+export function getClassSummary(classId: string) {
+  return backendFetch<ClassSummaryOut>(`/classes/${classId}`);
+}
+
 export function addNotes(classId: string, notes_text: string) {
   return backendFetch<NotesOut>(`/classes/${classId}/notes`, {
     method: 'POST',
@@ -173,6 +192,10 @@ export function createSemesterStudyPlan(
   });
 }
 
+export function getLatestStudyPlan(classId: string) {
+  return backendFetch<StudyPlanOut>(`/classes/${classId}/study-plan/latest`);
+}
+
 export function listDeadlines(classId: string) {
   return backendFetch<DeadlineOut[]>(`/classes/${classId}/deadlines`);
 }
@@ -187,6 +210,13 @@ export function createDeadline(classId: string, title: string, due: string) {
 export function deleteDeadline(classId: string, deadlineId: string) {
   return backendFetch<{ ok: boolean }>(`/classes/${classId}/deadlines/${deadlineId}`, {
     method: 'DELETE',
+  });
+}
+
+export function updateDeadline(classId: string, deadlineId: string, payload: { completed?: boolean }) {
+  return backendFetch<DeadlineOut>(`/classes/${classId}/deadlines/${deadlineId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
   });
 }
 
@@ -299,6 +329,9 @@ export type ChatReplyOut = {
   messages: ChatMessageOut[];
   state: Record<string, unknown>;
   tool_actions: ChatToolAction[];
+  complete?: boolean;
+  class_id?: string | null;
+  next_url?: string | null;
 };
 
 export function createOrGetChatSession() {

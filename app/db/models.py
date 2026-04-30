@@ -32,6 +32,13 @@ class Class(Base):
         Uuid(as_uuid=True), index=True, nullable=False
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
+    semester_start: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    semester_end: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    availability_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -110,6 +117,9 @@ class Deadline(Base):
     # (Later we can add robust parsing and store a normalized timestamp.)
     due_text: Mapped[str] = mapped_column(Text, nullable=False)
     due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

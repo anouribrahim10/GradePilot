@@ -13,11 +13,13 @@ Requires-Dist: httpx
 Requires-Dist: python-jose[cryptography]
 Requires-Dist: langchain
 Requires-Dist: langgraph
-Requires-Dist: google-generativeai
+Requires-Dist: google-genai
 Requires-Dist: pypdf
 Requires-Dist: sqlalchemy
 Requires-Dist: psycopg[binary]
 Requires-Dist: pgvector
+Requires-Dist: google-auth-oauthlib
+Requires-Dist: google-api-python-client
 Provides-Extra: dev
 Requires-Dist: ruff; extra == "dev"
 Requires-Dist: black; extra == "dev"
@@ -75,6 +77,14 @@ uvicorn app.main:app --reload
 ```
 
 The API will be available at `http://127.0.0.1:8000` with the interactive docs at `http://127.0.0.1:8000/docs`.
+
+- **Database schema (Supabase / Postgres)**
+  - The backend uses SQLAlchemy models, but Supabase/Postgres schema is created via SQL scripts in `docs/db/`.
+  - Run these scripts once in the Supabase SQL editor (or against your local Postgres), in order:
+    - `docs/db/002_rag_documents.sql`
+    - `docs/db/003_google_integrations.sql`
+    - `docs/db/004_user_settings.sql`
+    - `docs/db/005_chat.sql`
 
 - **Run tests and checks**
 

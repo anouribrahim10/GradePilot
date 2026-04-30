@@ -25,24 +25,29 @@ export async function middleware(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
 
-  // Remove dashboard flow entirely: /dashboard* always funnels into Study Plan (or auth).
+  // Remove dashboard flow entirely: /dashboard* always funnels into Classes (or auth).
   if (path.startsWith('/dashboard')) {
-    return NextResponse.redirect(new URL(user ? '/study-plan' : '/auth', request.url));
+    return NextResponse.redirect(new URL(user ? '/classes' : '/auth', request.url));
   }
 
-  // Protect the core workspace.
-  if (!user && path.startsWith('/study-plan')) {
+  // Redirect legacy workspace route.
+  if (path.startsWith('/study-plan')) {
+    return NextResponse.redirect(new URL(user ? '/classes' : '/auth', request.url));
+  }
+
+  // Protect the core app routes.
+  if (!user && (path.startsWith('/classes') || path.startsWith('/chat'))) {
     return NextResponse.redirect(new URL('/auth', request.url));
   }
 
   // Redirect authenticated users away from /auth.
   if (user && path.startsWith('/auth')) {
-    return NextResponse.redirect(new URL('/study-plan', request.url));
+    return NextResponse.redirect(new URL('/classes', request.url));
   }
 
   return supabaseResponse;
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/study-plan/:path*', '/auth'],
+  matcher: ['/dashboard/:path*', '/study-plan/:path*', '/classes/:path*', '/chat', '/auth'],
 };

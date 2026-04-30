@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,6 +18,11 @@ from app.schemas import (
     ChatToolAction,
 )
 from app.services.chat.onboarding import run_onboarding_step
+from app.services.study_plan_semester import (
+    SemesterStudyPlanGenerationError,
+    SemesterStudyPlanRateLimitError,
+    generate_semester_study_plan,
+)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -89,14 +95,129 @@ def post_message(
     onboarding = run_onboarding_step(state=state_json, user_message=payload.content)
     state_json = onboarding.state
 
-    # Execute tool actions (MVP: create class records).
+    # Execute tool actions (wizard orchestrator).
+    class_id: uuid.UUID | None = None
     for action in onboarding.tool_actions:
-        if action.get("type") == "create_classes":
-            titles = action.get("payload", {}).get("titles", [])
-            if isinstance(titles, list):
-                for t in titles:
-                    if isinstance(t, str) and t.strip():
-                        crud.create_class(db=db, user_id=user_id, title=t.strip())
+        a_type = str(action.get("type") or "")
+        payload_obj = action.get("payload") if isinstance(action.get("payload"), dict) else {}
+
+        if a_type == "create_class":
+            title = payload_obj.get("title")
+            if isinstance(title, str) and title.strip():
+                created = crud.create_class(db=db, user_id=user_id, title=title.strip())
+                class_id = created.id
+                state_json["class_id"] = str(created.id)
+
+        elif a_type == "set_class_timeline":
+            raw_class_id = state_json.get("class_id")
+            if isinstance(raw_class_id, str):
+                try:
+                    class_id = uuid.UUID(raw_class_id)
+                except ValueError:
+                    class_id = None
+            if class_id is not None:
+                availability = payload_obj.get("availability")
+                availability_json = None
+                if isinstance(availability, list):
+                    availability_json = {"blocks": availability}
+                crud.update_class_timeline(
+                    db=db,
+                    user_id=user_id,
+                    class_id=class_id,
+                    semester_start=(
+                        payload_obj.get("semester_start")
+                        if isinstance(payload_obj.get("semester_start"), str)
+                        else None
+                    ),
+                    semester_end=(
+                        payload_obj.get("semester_end")
+                        if isinstance(payload_obj.get("semester_end"), str)
+                        else None
+                    ),
+                    timezone=(
+                        payload_obj.get("timezone")
+                        if isinstance(payload_obj.get("timezone"), str)
+                        else None
+                    ),
+                    availability_json=availability_json,
+                )
+
+        elif a_type == "create_deadline":
+            raw_class_id = state_json.get("class_id")
+            if isinstance(raw_class_id, str):
+                try:
+                    class_id = uuid.UUID(raw_class_id)
+                except ValueError:
+                    class_id = None
+            if class_id is not None:
+                title = payload_obj.get("title")
+                due_text = payload_obj.get("due_text")
+                if isinstance(title, str) and isinstance(due_text, str):
+                    crud.create_deadline(
+                        db=db,
+                        user_id=user_id,
+                        class_id=class_id,
+                        title=title,
+                        due_text=due_text,
+                    )
+
+        elif a_type == "generate_semester_plan":
+            raw_class_id = state_json.get("class_id")
+            if isinstance(raw_class_id, str):
+                try:
+                    class_id = uuid.UUID(raw_class_id)
+                except ValueError:
+                    class_id = None
+            if class_id is not None:
+                clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
+                if clazz is None:
+                    continue
+                deadlines = crud.list_deadlines(db=db, user_id=user_id, class_id=class_id)
+                deadline_payload = [
+                    {
+                        "id": str(d.id),
+                        "title": d.title,
+                        "due_text": d.due_text,
+                        "due_at": (d.due_at.isoformat() if d.due_at else None),
+                    }
+                    for d in deadlines
+                ]
+                semester_start = state_json.get("semester_start")
+                semester_end = state_json.get("semester_end")
+                tz = state_json.get("timezone")
+                availability = state_json.get("availability")
+                if not (
+                    isinstance(semester_start, str)
+                    and isinstance(semester_end, str)
+                    and isinstance(tz, str)
+                ):
+                    continue
+                try:
+                    plan_json, model_name = generate_semester_study_plan(
+                        class_title=clazz.title,
+                        semester_start=semester_start,
+                        semester_end=semester_end,
+                        timezone=tz,
+                        deadlines=deadline_payload,
+                        availability=availability if isinstance(availability, list) else None,
+                    )
+                except SemesterStudyPlanRateLimitError as e:
+                    raise HTTPException(status_code=429, detail=str(e))
+                except SemesterStudyPlanGenerationError as e:
+                    raise HTTPException(status_code=502, detail=str(e))
+                plan = crud.create_study_plan(
+                    db=db,
+                    user_id=user_id,
+                    class_id=class_id,
+                    source_notes_id=None,
+                    plan_json=plan_json,
+                    model=model_name,
+                )
+                state_json["latest_study_plan_id"] = str(plan.id)
+                state_json["completed_at"] = datetime.utcnow().isoformat()
+
+        elif a_type == "complete":
+            state_json["complete"] = True
 
     crud.update_chat_state(
         db=db, user_id=user_id, session_id=session_id, state_json=state_json
@@ -112,6 +233,14 @@ def post_message(
     )
 
     msgs = crud.list_chat_messages(db=db, user_id=user_id, session_id=session_id)
+    raw_class_id = state_json.get("class_id")
+    out_class_id: uuid.UUID | None = None
+    if isinstance(raw_class_id, str):
+        try:
+            out_class_id = uuid.UUID(raw_class_id)
+        except ValueError:
+            out_class_id = None
+    complete = bool(state_json.get("complete")) or str(state_json.get("phase")) == "5"
 
     return ChatReplyOut(
         session=ChatSessionOut.model_validate(sess),
@@ -124,4 +253,7 @@ def post_message(
             )
             for a in onboarding.tool_actions
         ],
+        complete=complete,
+        class_id=out_class_id,
+        next_url=(f"/classes/{out_class_id}" if complete and out_class_id else None),
     )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -11,9 +12,12 @@ from app.deps.auth import CurrentUser, get_current_user
 from app.schemas import (
     ClassCreate,
     ClassOut,
+    ClassSummaryOut,
+    ClassTimelineUpdate,
     DeadlineCreate,
     DeadlineOut,
     DeadlineImportOut,
+    DeadlineUpdate,
     NotesCreate,
     NotesOut,
     PracticeGenerateOut,
@@ -71,6 +75,62 @@ def create_class(
 ) -> ClassOut:
     clazz = crud.create_class(db=db, user_id=_user_uuid(user), title=payload.title)
     return ClassOut.model_validate(clazz)
+
+
+@router.get("/{class_id}", response_model=ClassSummaryOut)
+def get_class_summary_endpoint(
+    class_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ClassSummaryOut:
+    user_id = _user_uuid(user)
+    clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
+    if clazz is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    deadlines = crud.list_deadlines(db=db, user_id=user_id, class_id=class_id)
+    next_deadline = crud.get_next_deadline(db=db, user_id=user_id, class_id=class_id)
+    latest_plan = crud.get_latest_study_plan(db=db, user_id=user_id, class_id=class_id)
+
+    return ClassSummaryOut(
+        clazz=ClassOut.model_validate(clazz),
+        deadline_count=len(deadlines),
+        next_deadline_id=(next_deadline.id if next_deadline else None),
+        next_deadline_title=(next_deadline.title if next_deadline else None),
+        next_deadline_due_at=(next_deadline.due_at if next_deadline else None),
+        latest_study_plan_id=(latest_plan.id if latest_plan else None),
+        latest_study_plan_created_at=(latest_plan.created_at if latest_plan else None),
+    )
+
+
+@router.patch("/{class_id}", response_model=ClassOut)
+def update_class_timeline_endpoint(
+    class_id: uuid.UUID,
+    payload: ClassTimelineUpdate,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ClassOut:
+    user_id = _user_uuid(user)
+    availability_json = (
+        [
+            {"day": b.day, "start_time": b.start_time, "end_time": b.end_time}
+            for b in (payload.availability or [])
+        ]
+        if payload.availability is not None
+        else None
+    )
+    updated = crud.update_class_timeline(
+        db=db,
+        user_id=user_id,
+        class_id=class_id,
+        semester_start=payload.semester_start,
+        semester_end=payload.semester_end,
+        timezone=payload.timezone,
+        availability_json={"blocks": availability_json} if availability_json is not None else None,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+    return ClassOut.model_validate(updated)
 
 
 @router.get("/{class_id}/notes", response_model=list[NotesOut])
@@ -237,6 +297,22 @@ def create_semester_study_plan_endpoint(
     return StudyPlanOut.model_validate(plan)
 
 
+@router.get("/{class_id}/study-plan/latest", response_model=StudyPlanOut)
+def get_latest_study_plan_endpoint(
+    class_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StudyPlanOut:
+    user_id = _user_uuid(user)
+    clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
+    if clazz is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+    plan = crud.get_latest_study_plan(db=db, user_id=user_id, class_id=class_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="No study plan found")
+    return StudyPlanOut.model_validate(plan)
+
+
 @router.get("/{class_id}/deadlines", response_model=list[DeadlineOut])
 def list_deadlines_endpoint(
     class_id: uuid.UUID,
@@ -271,6 +347,34 @@ def create_deadline_endpoint(
     )
     return DeadlineOut.model_validate(created)
 
+
+@router.patch("/{class_id}/deadlines/{deadline_id}", response_model=DeadlineOut)
+def update_deadline_endpoint(
+    class_id: uuid.UUID,
+    deadline_id: uuid.UUID,
+    payload: DeadlineUpdate,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DeadlineOut:
+    user_id = _user_uuid(user)
+    clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
+    if clazz is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    if payload.completed is None:
+        raise HTTPException(status_code=400, detail="No updates provided")
+
+    completed_at = datetime.now(timezone.utc) if payload.completed else None
+    updated = crud.update_deadline_completion(
+        db=db,
+        user_id=user_id,
+        class_id=class_id,
+        deadline_id=deadline_id,
+        completed_at=completed_at,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Deadline not found")
+    return DeadlineOut.model_validate(updated)
 
 @router.delete("/{class_id}/deadlines/{deadline_id}")
 def delete_deadline_endpoint(

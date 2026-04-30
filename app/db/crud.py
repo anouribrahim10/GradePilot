@@ -44,6 +44,33 @@ def get_class(*, db: Session, user_id: uuid.UUID, class_id: uuid.UUID) -> Class 
     return db.execute(stmt).scalar_one_or_none()
 
 
+def update_class_timeline(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    class_id: uuid.UUID,
+    semester_start: str | None = None,
+    semester_end: str | None = None,
+    timezone: str | None = None,
+    availability_json: dict[str, Any] | None = None,
+) -> Class | None:
+    clazz = get_class(db=db, user_id=user_id, class_id=class_id)
+    if clazz is None:
+        return None
+    if semester_start is not None:
+        clazz.semester_start = semester_start
+    if semester_end is not None:
+        clazz.semester_end = semester_end
+    if timezone is not None:
+        clazz.timezone = timezone
+    if availability_json is not None:
+        clazz.availability_json = availability_json
+    db.add(clazz)
+    db.commit()
+    db.refresh(clazz)
+    return clazz
+
+
 def create_notes(
     *, db: Session, user_id: uuid.UUID, class_id: uuid.UUID, notes_text: str
 ) -> ClassNotes:
@@ -119,6 +146,41 @@ def list_deadlines(
     return list(db.execute(stmt).scalars().all())
 
 
+def get_deadline(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    class_id: uuid.UUID,
+    deadline_id: uuid.UUID,
+) -> Deadline | None:
+    stmt = select(Deadline).where(
+        Deadline.id == deadline_id,
+        Deadline.class_id == class_id,
+        Deadline.user_id == user_id,
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def update_deadline_completion(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    class_id: uuid.UUID,
+    deadline_id: uuid.UUID,
+    completed_at: Any | None,
+) -> Deadline | None:
+    d = get_deadline(
+        db=db, user_id=user_id, class_id=class_id, deadline_id=deadline_id
+    )
+    if d is None:
+        return None
+    d.completed_at = completed_at
+    db.add(d)
+    db.commit()
+    db.refresh(d)
+    return d
+
+
 def create_deadline(
     *,
     db: Session,
@@ -139,6 +201,42 @@ def create_deadline(
     db.commit()
     db.refresh(deadline)
     return deadline
+
+
+def get_latest_study_plan(
+    *, db: Session, user_id: uuid.UUID, class_id: uuid.UUID
+) -> StudyPlan | None:
+    stmt = (
+        select(StudyPlan)
+        .where(StudyPlan.class_id == class_id, StudyPlan.user_id == user_id)
+        .order_by(desc(StudyPlan.created_at))
+        .limit(1)
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def get_next_deadline(
+    *, db: Session, user_id: uuid.UUID, class_id: uuid.UUID
+) -> Deadline | None:
+    """
+    Return the next upcoming deadline for a class.
+
+    Preference order:
+    - earliest non-null due_at among incomplete deadlines
+    - otherwise None (we do not try to sort due_text strings)
+    """
+    stmt = (
+        select(Deadline)
+        .where(
+            Deadline.class_id == class_id,
+            Deadline.user_id == user_id,
+            Deadline.completed_at.is_(None),
+            Deadline.due_at.is_not(None),
+        )
+        .order_by(Deadline.due_at.asc())
+        .limit(1)
+    )
+    return db.execute(stmt).scalar_one_or_none()
 
 
 def delete_deadline(

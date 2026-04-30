@@ -17,7 +17,28 @@ class ClassOut(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     title: str
+    semester_start: str | None = None
+    semester_end: str | None = None
+    timezone: str | None = None
+    availability_json: dict[str, Any] | None = None
     created_at: datetime
+
+
+class ClassTimelineUpdate(BaseModel):
+    semester_start: str | None = Field(default=None, max_length=40)
+    semester_end: str | None = Field(default=None, max_length=40)
+    timezone: str | None = Field(default=None, max_length=60)
+    availability: list["StudyAvailabilityBlock"] | None = None
+
+
+class ClassSummaryOut(BaseModel):
+    clazz: ClassOut
+    deadline_count: int
+    next_deadline_id: uuid.UUID | None = None
+    next_deadline_title: str | None = None
+    next_deadline_due_at: datetime | None = None
+    latest_study_plan_id: uuid.UUID | None = None
+    latest_study_plan_created_at: datetime | None = None
 
 
 class NotesCreate(BaseModel):
@@ -112,7 +133,12 @@ class DeadlineOut(BaseModel):
     title: str
     due_text: str
     due_at: datetime | None
+    completed_at: datetime | None = None
     created_at: datetime
+
+
+class DeadlineUpdate(BaseModel):
+    completed: bool | None = None
 
 
 class MaterialIngestOut(BaseModel):
@@ -177,6 +203,9 @@ class ChatReplyOut(BaseModel):
     messages: list[ChatMessageOut]
     state: dict[str, Any]
     tool_actions: list[ChatToolAction] = Field(default_factory=list)
+    complete: bool = False
+    class_id: uuid.UUID | None = None
+    next_url: str | None = None
 
 
 class DeadlineImportOut(BaseModel):

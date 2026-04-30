@@ -1,10 +1,6 @@
-import dynamic from 'next/dynamic';
-
-const StudyPlanClient = dynamic(() => import('./StudyPlanClient'), {
-  ssr: false,
-});
+import { redirect } from 'next/navigation';
 
 export default function StudyPlanPage() {
-  return <StudyPlanClient />;
+  redirect('/classes');
 }
 

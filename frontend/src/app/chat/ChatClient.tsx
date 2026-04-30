@@ -2,16 +2,16 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   createOrGetChatSession,
   getChatSession,
   importDeadlinesFromSyllabus,
-  listClasses,
   sendChatMessage,
   uploadMaterialPdf,
+  uploadMaterialText,
   type ChatReplyOut,
   type ChatToolAction,
-  type ClassOut,
 } from '@/lib/backend';
 import { createClient } from '@/lib/supabase/client';
 import { StudyPlanShell } from '@/components/study-plan/StudyPlanShell';
@@ -19,36 +19,44 @@ import { StudyPlanShell } from '@/components/study-plan/StudyPlanShell';
 type ToolCard = { title: string; detail?: string };
 
 function toolActionToCard(a: ChatToolAction): ToolCard | null {
-  if (a.type === 'create_classes') {
-    const titles = (a.payload?.titles as unknown as string[]) ?? [];
-    return { title: 'Created classes', detail: titles.join(', ') };
+  if (a.type === 'create_class') {
+    const title = String((a.payload as any)?.title ?? '');
+    return { title: 'Created class', detail: title };
   }
   return { title: `Action: ${a.type}` };
 }
 
 export default function ChatClient() {
   const supabase = createClient();
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [chat, setChat] = useState<ChatReplyOut | null>(null);
-  const [draft, setDraft] = useState('');
   const [toolCards, setToolCards] = useState<ToolCard[]>([]);
 
-  const [classes, setClasses] = useState<ClassOut[]>([]);
-  const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const selectedClass = useMemo(
-    () => classes.find((c) => c.id === selectedClassId) ?? null,
-    [classes, selectedClassId]
+  const phase = Number((chat?.state?.phase as any) ?? 1) || 1;
+  const classId = useMemo(() => {
+    const direct = chat?.class_id;
+    if (typeof direct === 'string' && direct) return direct;
+    const fromState = chat?.state?.class_id;
+    if (typeof fromState === 'string' && fromState) return fromState;
+    return null;
+  }, [chat]);
+
+  const [classTitle, setClassTitle] = useState('');
+  const [timezone, setTimezone] = useState('America/New_York');
+  const [semesterStart, setSemesterStart] = useState('');
+  const [semesterEnd, setSemesterEnd] = useState('');
+
+  const [deadlineTitle, setDeadlineTitle] = useState('');
+  const [deadlineDue, setDeadlineDue] = useState('');
+
+  const [materialDocType, setMaterialDocType] = useState<'reading' | 'notes' | 'assignment'>(
+    'reading'
   );
-
-  const phaseRaw = String(chat?.state?.phase ?? 'need_materials');
-  // Legacy sessions may still have the old first-step phase name
-  const phase = phaseRaw === 'need_semester' ? 'need_materials' : phaseRaw;
-  const classTitles = (chat?.state?.class_titles as unknown as string[]) ?? [];
-
-  const [uploadGateHint, setUploadGateHint] = useState<string | null>(null);
+  const [pasteToIndex, setPasteToIndex] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -62,10 +70,6 @@ export default function ChatClient() {
         const reply = await getChatSession(sess.id);
         if (cancelled) return;
         setChat(reply);
-        const cls = await listClasses();
-        if (cancelled) return;
-        setClasses(cls);
-        setSelectedClassId(cls[0]?.id ?? '');
       } catch (e: unknown) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : 'Failed to load chat');
@@ -79,36 +83,24 @@ export default function ChatClient() {
   }, []);
 
   useEffect(() => {
-    if (classes.length > 0 && !selectedClassId) {
-      setSelectedClassId(classes[0]!.id);
+    if (chat?.complete && chat.class_id) {
+      router.push(`/classes/${chat.class_id}`);
     }
-  }, [classes, selectedClassId]);
+  }, [chat?.complete, chat?.class_id, router]);
 
-  async function send() {
+  async function sendRaw(content: string) {
     if (!sessionId) return;
-    const content = draft.trim();
-    if (!content) return;
-    setDraft('');
+    const c = content.trim();
+    if (!c) return;
     setLoading(true);
     setError(null);
     try {
-      const out = await sendChatMessage(sessionId, content);
+      const out = await sendChatMessage(sessionId, c);
       setChat(out);
-      setUploadGateHint(null);
       const newCards = (out.tool_actions ?? [])
         .map(toolActionToCard)
         .filter((c): c is ToolCard => Boolean(c));
       setToolCards((prev) => [...newCards, ...prev].slice(0, 12));
-      const nextPhase = String(out.state?.phase ?? '');
-      if (
-        newCards.length ||
-        nextPhase === 'need_syllabi' ||
-        nextPhase === 'need_classes'
-      ) {
-        const cls = await listClasses();
-        setClasses(cls);
-        setSelectedClassId((prev) => prev || cls[0]?.id || '');
-      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to send message');
     } finally {
@@ -119,11 +111,11 @@ export default function ChatClient() {
   return (
     <StudyPlanShell
       title="GradePilot Chat"
-      subtitle="Share syllabi, notes, and readings first — then semester dates for your full plan."
+      subtitle="A step-by-step setup wizard for one class."
       actions={
         <div className="flex items-center gap-4">
-          <Link href="/study-plan" className="text-sm text-slate-300 hover:text-white transition-colors">
-            Workspace
+          <Link href="/classes" className="text-sm text-slate-300 hover:text-white transition-colors">
+            Classes
           </Link>
           <button
             onClick={async () => {
@@ -142,135 +134,13 @@ export default function ChatClient() {
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
             <div className="text-sm font-semibold">Status</div>
             <div className="mt-2 text-sm text-slate-300">
-              Phase: <span className="text-white">{phase}</span>
+              Phase: <span className="text-white">{phase}</span> / 5
             </div>
-            {classTitles.length ? (
-              <div className="mt-2 text-xs text-slate-400">Classes: {classTitles.join(', ')}</div>
-            ) : null}
-          </div>
-
-          <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-4 space-y-3">
-            <div>
-              <div className="text-sm font-semibold text-emerald-100">Upload course materials</div>
-              <div className="mt-1 text-xs text-slate-400">
-                <strong>Syllabus PDF</strong> — Q&amp;A + deadline import.{' '}
-                <strong>Notes / readings</strong> — optional PDFs for search.
+            {classId ? (
+              <div className="mt-2 text-xs text-slate-400">
+                class_id: <span className="font-mono text-slate-200">{classId}</span>
               </div>
-            </div>
-
-            {classes.length === 0 ? (
-              <p className="text-xs text-amber-200/90 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2">
-                Send <span className="font-mono text-amber-100">CS101, BIO 101</span> in the chat to
-                create class workspaces — then the buttons below will attach files to the class you
-                pick.
-              </p>
             ) : null}
-
-            {uploadGateHint ? (
-              <p className="text-xs text-amber-200/90">{uploadGateHint}</p>
-            ) : null}
-
-            <div className="grid gap-2">
-              <label className="text-xs text-slate-400">Class</label>
-              <select
-                value={selectedClassId}
-                onChange={(e) => setSelectedClassId(e.target.value)}
-                disabled={classes.length === 0}
-                className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm disabled:opacity-50"
-              >
-                {classes.length === 0 ? (
-                  <option value="">— Add class names in chat —</option>
-                ) : (
-                  classes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.title}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-
-            <label
-              className={[
-                'text-sm rounded-xl border px-4 py-2.5 text-center block font-semibold transition-colors',
-                classes.length && selectedClassId
-                  ? 'text-slate-100 border-white/20 bg-white/[0.08] hover:bg-white/[0.12] cursor-pointer'
-                  : 'text-slate-500 border-white/10 bg-black/20 cursor-not-allowed opacity-70',
-              ].join(' ')}
-            >
-              <input
-                type="file"
-                accept=".pdf,application/pdf"
-                className="hidden"
-                disabled={!classes.length || !selectedClassId}
-                onChange={async (e) => {
-                  if (!classes.length || !selectedClass) {
-                    setUploadGateHint('Add class names in the chat first.');
-                    return;
-                  }
-                  const f = e.target.files?.[0];
-                  e.target.value = '';
-                  if (!f || !selectedClass) return;
-                  setLoading(true);
-                  setError(null);
-                  try {
-                    await uploadMaterialPdf(selectedClass.id, f, 'syllabus');
-                    const imported = await importDeadlinesFromSyllabus(selectedClass.id, f);
-                    setToolCards((prev) => [
-                      { title: 'Imported deadlines', detail: `${imported.created} created` },
-                      ...prev,
-                    ]);
-                  } catch (err: unknown) {
-                    setError(err instanceof Error ? err.message : 'Upload/import failed');
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-              />
-              Upload syllabus PDF
-            </label>
-
-            <label
-              className={[
-                'text-sm rounded-xl border px-4 py-2.5 text-center block font-semibold transition-colors',
-                classes.length && selectedClassId
-                  ? 'text-slate-100 border-white/20 bg-white/[0.08] hover:bg-white/[0.12] cursor-pointer'
-                  : 'text-slate-500 border-white/10 bg-black/20 cursor-not-allowed opacity-70',
-              ].join(' ')}
-            >
-              <input
-                type="file"
-                accept=".pdf,application/pdf"
-                className="hidden"
-                disabled={!classes.length || !selectedClassId}
-                onChange={async (e) => {
-                  if (!classes.length || !selectedClass) {
-                    setUploadGateHint('Add class names in the chat first.');
-                    return;
-                  }
-                  const f = e.target.files?.[0];
-                  e.target.value = '';
-                  if (!f || !selectedClass) return;
-                  setLoading(true);
-                  setError(null);
-                  try {
-                    const out = await uploadMaterialPdf(selectedClass.id, f, 'reading');
-                    setToolCards((prev) => [
-                      {
-                        title: 'Indexed reading/slides',
-                        detail: `${out.chunks_created} chunks`,
-                      },
-                      ...prev,
-                    ]);
-                  } catch (err: unknown) {
-                    setError(err instanceof Error ? err.message : 'Upload failed');
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-              />
-              Upload notes or readings (PDF)
-            </label>
           </div>
 
           {toolCards.length ? (
@@ -314,40 +184,272 @@ export default function ChatClient() {
                 ))
               ) : (
                 <div className="text-sm text-slate-300">
-                  Your first message from GradePilot lists syllabus, notes, and readings — check above after load.
+                  Loading your onboarding wizard…
                 </div>
               )}
             </div>
 
-            <div className="flex gap-2">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Message GradePilot…"
-                className="flex-1 min-h-[48px] max-h-[140px] bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-white/20"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    void send();
-                  }
-                }}
-              />
-              <button
-                type="button"
-                disabled={loading || draft.trim().length === 0}
-                onClick={() => void send()}
-                className="rounded-xl bg-white text-black px-4 py-2 text-sm font-semibold disabled:opacity-60"
-              >
-                Send
-              </button>
-            </div>
-            <div className="text-xs text-slate-400">
-              After uploads: send semester as{' '}
-              <span className="font-mono">
-                timezone=America/New_York; start=YYYY-MM-DD; end=YYYY-MM-DD
-              </span>{' '}
-              or start with class names: <span className="font-mono">CS101, BIO 101</span>
-            </div>
+            {/* Phase controls */}
+            {phase === 1 ? (
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
+                <div className="text-sm font-semibold text-white">Phase 1 — Class setup</div>
+                <input
+                  value={classTitle}
+                  onChange={(e) => setClassTitle(e.target.value)}
+                  placeholder='e.g. "CS 301 — Algorithms"'
+                  className="w-full bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-white/20"
+                />
+                <div className="flex justify-end">
+                  <button
+                    disabled={loading || classTitle.trim().length === 0}
+                    onClick={() =>
+                      void sendRaw(JSON.stringify({ class_title: classTitle.trim() }))
+                    }
+                    className="rounded-xl bg-white text-black px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                  >
+                    Create class
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {phase === 2 ? (
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
+                <div className="text-sm font-semibold text-white">Phase 2 — Semester timeline</div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <input
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                    placeholder="Timezone (e.g. America/New_York)"
+                    className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-white/20"
+                  />
+                  <input
+                    value={semesterStart}
+                    onChange={(e) => setSemesterStart(e.target.value)}
+                    placeholder="Start (YYYY-MM-DD)"
+                    className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-white/20"
+                  />
+                  <input
+                    value={semesterEnd}
+                    onChange={(e) => setSemesterEnd(e.target.value)}
+                    placeholder="End (YYYY-MM-DD)"
+                    className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-white/20"
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    disabled={
+                      loading ||
+                      !timezone.trim() ||
+                      !semesterStart.trim() ||
+                      !semesterEnd.trim()
+                    }
+                    onClick={() =>
+                      void sendRaw(
+                        JSON.stringify({
+                          timezone: timezone.trim(),
+                          semester_start: semesterStart.trim(),
+                          semester_end: semesterEnd.trim(),
+                        })
+                      )
+                    }
+                    className="rounded-xl bg-white text-black px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                  >
+                    Save timeline
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {phase === 3 ? (
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-4">
+                <div className="text-sm font-semibold text-white">Phase 3 — Deadlines</div>
+                <div className="text-xs text-slate-400">
+                  Upload a syllabus PDF to extract deadlines, or add deadlines manually below.
+                </div>
+
+                <label className="text-sm text-slate-300 hover:text-white cursor-pointer rounded-xl border border-white/15 bg-white/[0.03] px-4 py-2 inline-block">
+                  <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    className="hidden"
+                    disabled={loading || !classId}
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = '';
+                      if (!f || !classId) return;
+                      setLoading(true);
+                      setError(null);
+                      try {
+                        await uploadMaterialPdf(classId, f, 'syllabus');
+                        const imported = await importDeadlinesFromSyllabus(classId, f);
+                        setToolCards((prev) => [
+                          { title: 'Imported deadlines', detail: `${imported.created} created` },
+                          ...prev,
+                        ]);
+                        await sendRaw(JSON.stringify({ deadlines_imported: true }));
+                      } catch (err: unknown) {
+                        setError(err instanceof Error ? err.message : 'Upload/import failed');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                  />
+                  Upload syllabus PDF
+                </label>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <input
+                    value={deadlineTitle}
+                    onChange={(e) => setDeadlineTitle(e.target.value)}
+                    placeholder="Deadline title"
+                    className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-white/20"
+                  />
+                  <input
+                    value={deadlineDue}
+                    onChange={(e) => setDeadlineDue(e.target.value)}
+                    placeholder="Due (YYYY-MM-DD)"
+                    className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-white/20"
+                  />
+                  <button
+                    disabled={loading || !deadlineTitle.trim() || !deadlineDue.trim()}
+                    onClick={() => {
+                      void sendRaw(
+                        JSON.stringify({
+                          deadline: { title: deadlineTitle.trim(), due: deadlineDue.trim() },
+                        })
+                      );
+                      setDeadlineTitle('');
+                      setDeadlineDue('');
+                    }}
+                    className="rounded-xl bg-white text-black px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                  >
+                    Add deadline
+                  </button>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled={loading}
+                    onClick={() => void sendRaw('done')}
+                    className="rounded-xl border border-white/15 bg-white/[0.03] text-slate-100 px-4 py-2 text-sm font-semibold hover:bg-white/[0.06] disabled:opacity-60"
+                  >
+                    Done with deadlines
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {phase === 4 ? (
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-4">
+                <div className="text-sm font-semibold text-white">Phase 4 — Materials</div>
+                <div className="text-xs text-slate-400">
+                  Upload readings/slides/notes for Q&amp;A (optional). When finished, click Done.
+                </div>
+
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="grid gap-1">
+                    <label className="text-xs text-slate-400">Document type</label>
+                    <select
+                      value={materialDocType}
+                      onChange={(e) => setMaterialDocType(e.target.value as any)}
+                      className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm min-w-[160px]"
+                    >
+                      <option value="reading">reading</option>
+                      <option value="notes">notes</option>
+                      <option value="assignment">assignment</option>
+                    </select>
+                  </div>
+
+                  <label className="text-sm text-slate-300 hover:text-white cursor-pointer rounded-xl border border-white/15 bg-white/[0.03] px-4 py-2">
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                      disabled={loading || !classId}
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!f || !classId) return;
+                        setLoading(true);
+                        setError(null);
+                        try {
+                          const out = await uploadMaterialPdf(classId, f, materialDocType);
+                          setToolCards((prev) => [
+                            { title: 'Indexed material', detail: `${out.chunks_created} chunks` },
+                            ...prev,
+                          ]);
+                        } catch (err: unknown) {
+                          setError(err instanceof Error ? err.message : 'Upload failed');
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                    />
+                    Upload PDF
+                  </label>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs text-slate-400">Or paste text to index</label>
+                  <textarea
+                    value={pasteToIndex}
+                    onChange={(e) => setPasteToIndex(e.target.value)}
+                    placeholder="Paste text here to index…"
+                    className="w-full min-h-[100px] bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-white/20"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      disabled={loading || !classId || pasteToIndex.trim().length === 0}
+                      onClick={async () => {
+                        if (!classId) return;
+                        setLoading(true);
+                        setError(null);
+                        try {
+                          const out = await uploadMaterialText(
+                            classId,
+                            pasteToIndex.trim(),
+                            'pasted.txt',
+                            materialDocType
+                          );
+                          setPasteToIndex('');
+                          setToolCards((prev) => [
+                            { title: 'Indexed pasted text', detail: `${out.chunks_created} chunks` },
+                            ...prev,
+                          ]);
+                        } catch (err: unknown) {
+                          setError(err instanceof Error ? err.message : 'Index failed');
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      className="rounded-xl border border-white/15 bg-white/[0.03] text-slate-100 px-4 py-2 text-sm font-semibold hover:bg-white/[0.06] disabled:opacity-60"
+                    >
+                      Index text
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled={loading}
+                    onClick={() => void sendRaw('done')}
+                    className="rounded-xl bg-white text-black px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                  >
+                    Done → Generate plan
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {phase === 5 ? (
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-2">
+                <div className="text-sm font-semibold text-white">Phase 5 — Study plan</div>
+                <div className="text-sm text-slate-300">
+                  {chat?.complete ? 'Complete. Redirecting…' : 'Generating your study plan…'}
+                </div>
+              </div>
+            ) : null}
           </div>
         </main>
       </div>
