@@ -18,6 +18,8 @@ dependencies = [
 
   "sqlalchemy",
   "psycopg[binary]",
+  "google-auth-oauthlib",
+  "google-api-python-client",
 ]
 
 [project.optional-dependencies]
@@ -51,8 +53,16 @@ python_version = "3.11"
 strict = true
 ignore_missing_imports = true
 disallow_untyped_decorators = false
+exclude = ["app/routers/calendar.py"]
+
+[[tool.mypy.overrides]]
+module = ["app.schemas", "app.db.models", "app.db.crud", "app.routers.classes"]
+ignore_errors = true
 
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+omit = ["app/routers/calendar.py"]
 

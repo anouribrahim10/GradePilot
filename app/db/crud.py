@@ -93,9 +93,7 @@ def create_study_plan(
     return plan
 
 
-def list_study_plans(
-    *, db: Session, user_id: uuid.UUID
-) -> list[StudyPlan]:
+def list_study_plans(*, db: Session, user_id: uuid.UUID) -> list[StudyPlan]:
     stmt = (
         select(StudyPlan)
         .where(StudyPlan.user_id == user_id)

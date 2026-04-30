@@ -1,0 +1,65 @@
+name: Terraform
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    env:
+      HAS_GCP_CREDS: ${{ secrets.TERRAFORM_GCP_SA_KEY != '' }}
+
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        if: env.TERRAFORM_GCP_SA_KEY != ''
+        uses: google-github-actions/auth@v2
+        env:
+          TERRAFORM_GCP_SA_KEY: ${{ secrets.TERRAFORM_GCP_SA_KEY }}
+        with:
+          credentials_json: ${{ secrets.TERRAFORM_GCP_SA_KEY }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.0
+
+      - name: Terraform Init
+        if: env.TERRAFORM_GCP_SA_KEY != ''
+        env:
+          TERRAFORM_GCP_SA_KEY: ${{ secrets.TERRAFORM_GCP_SA_KEY }}
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        if: env.TERRAFORM_GCP_SA_KEY != ''
+        env:
+          TERRAFORM_GCP_SA_KEY: ${{ secrets.TERRAFORM_GCP_SA_KEY }}
+        run: |
+          terraform plan \
+            -var="supabase_url=${{ secrets.SUPABASE_URL }}" \
+            -var="supabase_jwt_secret=${{ secrets.SUPABASE_JWT_SECRET }}" \
+            -var="database_url=${{ secrets.DATABASE_URL }}" \
+            -var="google_api_key=${{ secrets.GOOGLE_API_KEY }}"
+
+      - name: Terraform Apply
+        if: env.TERRAFORM_GCP_SA_KEY != '' && github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          TERRAFORM_GCP_SA_KEY: ${{ secrets.TERRAFORM_GCP_SA_KEY }}
+        run: |
+          terraform apply -auto-approve \
+            -var="supabase_url=${{ secrets.SUPABASE_URL }}" \
+            -var="supabase_jwt_secret=${{ secrets.SUPABASE_JWT_SECRET }}" \
+            -var="database_url=${{ secrets.DATABASE_URL }}" \
+            -var="google_api_key=${{ secrets.GOOGLE_API_KEY }}"

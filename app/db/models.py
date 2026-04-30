@@ -86,12 +86,12 @@ class StudyPlan(Base):
 class GoogleCalendarToken(Base):
     __tablename__ = "google_calendar_tokens"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), primary_key=True
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     access_token: Mapped[str] = mapped_column(Text, nullable=False)
     refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
-    expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expiry: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -106,11 +106,8 @@ class GoogleEventSync(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), index=True, nullable=False
     )
-    app_event_id: Mapped[str] = mapped_column(
-        String(100), index=True, nullable=False
-    )
+    app_event_id: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     google_event_id: Mapped[str] = mapped_column(String(200), nullable=False)
     last_synced: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-
