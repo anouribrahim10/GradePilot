@@ -99,7 +99,10 @@ def post_message(
     class_id: uuid.UUID | None = None
     for action in onboarding.tool_actions:
         a_type = str(action.get("type") or "")
-        payload_obj = action.get("payload") if isinstance(action.get("payload"), dict) else {}
+        payload_raw = action.get("payload")
+        payload_obj: dict[str, Any] = (
+            payload_raw if isinstance(payload_raw, dict) else {}
+        )
 
         if a_type == "create_class":
             title = payload_obj.get("title")
@@ -172,7 +175,9 @@ def post_message(
                 clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
                 if clazz is None:
                     continue
-                deadlines = crud.list_deadlines(db=db, user_id=user_id, class_id=class_id)
+                deadlines = crud.list_deadlines(
+                    db=db, user_id=user_id, class_id=class_id
+                )
                 deadline_payload = [
                     {
                         "id": str(d.id),
@@ -199,7 +204,9 @@ def post_message(
                         semester_end=semester_end,
                         timezone=tz,
                         deadlines=deadline_payload,
-                        availability=availability if isinstance(availability, list) else None,
+                        availability=(
+                            availability if isinstance(availability, list) else None
+                        ),
                     )
                 except SemesterStudyPlanRateLimitError as e:
                     raise HTTPException(status_code=429, detail=str(e))

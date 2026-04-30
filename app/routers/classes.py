@@ -126,7 +126,9 @@ def update_class_timeline_endpoint(
         semester_start=payload.semester_start,
         semester_end=payload.semester_end,
         timezone=payload.timezone,
-        availability_json={"blocks": availability_json} if availability_json is not None else None,
+        availability_json=(
+            {"blocks": availability_json} if availability_json is not None else None
+        ),
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="Class not found")
@@ -375,6 +377,7 @@ def update_deadline_endpoint(
     if updated is None:
         raise HTTPException(status_code=404, detail="Deadline not found")
     return DeadlineOut.model_validate(updated)
+
 
 @router.delete("/{class_id}/deadlines/{deadline_id}")
 def delete_deadline_endpoint(

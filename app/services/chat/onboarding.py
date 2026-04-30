@@ -47,12 +47,12 @@ def _parse_json_message(message: str) -> dict[str, Any] | None:
 def _parse_semester_fields(message: str) -> dict[str, str]:
     msg_json = _parse_json_message(message)
     if msg_json is not None:
-        out: dict[str, str] = {}
+        out_json: dict[str, str] = {}
         for k in ("timezone", "semester_start", "semester_end"):
             v = msg_json.get(k)
             if isinstance(v, str) and v.strip():
-                out[k] = v.strip()
-        return out
+                out_json[k] = v.strip()
+        return out_json
 
     fields: dict[str, str] = {}
     for part in (message or "").split(";"):
@@ -62,18 +62,18 @@ def _parse_semester_fields(message: str) -> dict[str, str]:
         fields[k.strip().lower()] = v.strip()
 
     # Accept both start/end and semester_start/semester_end
-    out: dict[str, str] = {}
+    result: dict[str, str] = {}
     if fields.get("timezone"):
-        out["timezone"] = fields["timezone"]
+        result["timezone"] = fields["timezone"]
     if fields.get("start"):
-        out["semester_start"] = fields["start"]
+        result["semester_start"] = fields["start"]
     if fields.get("end"):
-        out["semester_end"] = fields["end"]
+        result["semester_end"] = fields["end"]
     if fields.get("semester_start"):
-        out["semester_start"] = fields["semester_start"]
+        result["semester_start"] = fields["semester_start"]
     if fields.get("semester_end"):
-        out["semester_end"] = fields["semester_end"]
-    return out
+        result["semester_end"] = fields["semester_end"]
+    return result
 
 
 def run_onboarding_step(
@@ -117,7 +117,7 @@ def run_onboarding_step(
                 f"Got it: **{title}**.\n\n"
                 "Next: send your semester timeline as either:\n"
                 "- `timezone=America/New_York; start=YYYY-MM-DD; end=YYYY-MM-DD`, or\n"
-                "- JSON: `{ \"timezone\": \"...\", \"semester_start\": \"...\", \"semester_end\": \"...\" }`"
+                '- JSON: `{ "timezone": "...", "semester_start": "...", "semester_end": "..." }`'
             ),
             state=st,
             tool_actions=tool_actions,
@@ -165,8 +165,8 @@ def run_onboarding_step(
             assistant_message=(
                 "Great. Next: deadlines.\n\n"
                 "Upload your syllabus to import deadlines, or add deadlines manually.\n"
-                "To signal you imported via the UI, send JSON: `{ \"deadlines_imported\": true }`.\n"
-                "For manual entry, send JSON: `{ \"deadline\": { \"title\": \"...\", \"due\": \"...\" } }`.\n"
+                'To signal you imported via the UI, send JSON: `{ "deadlines_imported": true }`.\n'
+                'For manual entry, send JSON: `{ "deadline": { "title": "...", "due": "..." } }`.\n'
                 "When finished, send `done`."
             ),
             state=st,
@@ -202,11 +202,19 @@ def run_onboarding_step(
         if isinstance(deadline_obj, dict):
             title = deadline_obj.get("title")
             due = deadline_obj.get("due")
-            if isinstance(title, str) and title.strip() and isinstance(due, str) and due.strip():
+            if (
+                isinstance(title, str)
+                and title.strip()
+                and isinstance(due, str)
+                and due.strip()
+            ):
                 tool_actions.append(
                     {
                         "type": "create_deadline",
-                        "payload": {"title": title.strip()[:200], "due_text": due.strip()[:500]},
+                        "payload": {
+                            "title": title.strip()[:200],
+                            "due_text": due.strip()[:500],
+                        },
                     }
                 )
                 return OnboardingResult(
@@ -218,7 +226,7 @@ def run_onboarding_step(
         return OnboardingResult(
             assistant_message=(
                 "For deadlines, either import via syllabus upload, or add manually.\n"
-                "Manual JSON example: `{ \"deadline\": { \"title\": \"Midterm\", \"due\": \"2026-10-12\" } }`.\n"
+                'Manual JSON example: `{ "deadline": { "title": "Midterm", "due": "2026-10-12" } }`.\n'
                 "When finished, send `done`."
             ),
             state=st,

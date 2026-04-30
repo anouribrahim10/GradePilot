@@ -169,9 +169,7 @@ def update_deadline_completion(
     deadline_id: uuid.UUID,
     completed_at: Any | None,
 ) -> Deadline | None:
-    d = get_deadline(
-        db=db, user_id=user_id, class_id=class_id, deadline_id=deadline_id
-    )
+    d = get_deadline(db=db, user_id=user_id, class_id=class_id, deadline_id=deadline_id)
     if d is None:
         return None
     d.completed_at = completed_at
@@ -311,9 +309,7 @@ def create_chat_session(*, db: Session, user_id: uuid.UUID) -> ChatSession:
     db.commit()
     db.refresh(session)
     # Create initial state row + first assistant message (materials-first onboarding).
-    st = ChatState(
-        session_id=session.id, user_id=user_id, state_json=initial_state()
-    )
+    st = ChatState(session_id=session.id, user_id=user_id, state_json=initial_state())
     db.add(st)
     db.commit()
     add_chat_message(

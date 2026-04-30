@@ -28,7 +28,7 @@ def _build_credentials(
         client_id=client_id,
         client_secret=client_secret,
         scopes=["https://www.googleapis.com/auth/calendar"],
-    )  # type: ignore[no-untyped-call]
+    )
 
 
 def get_or_create_gradepilot_calendar(*, creds: Credentials) -> str:
