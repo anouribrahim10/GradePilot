@@ -368,7 +368,7 @@ def test_summarise_and_google_routes_smoke(
             self.title = "Doc"
             self.summary = "Summary"
             self.key_topics = ["t1"]
-            self.important_dates = []
+            self.important_dates: list[str] = []
             self.extracted_notes = "Notes"
 
     def _fake_summarise_document(*args: Any, **kwargs: Any) -> _Sum:
