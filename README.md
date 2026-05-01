@@ -47,9 +47,29 @@ uvicorn app.main:app --reload
 
 The API will be available at `http://127.0.0.1:8000` with the interactive docs at `http://127.0.0.1:8000/docs`.
 
+### Environment variables
+
+Backend configuration is provided via environment variables (see `app/core/config.py`).
+
+- **Required**
+  - `SUPABASE_URL`
+  - `DATABASE_URL` (or `SUPABASE_DATABASE_URL`)
+- **Optional (defaults provided)**
+  - `SUPABASE_JWT_ISSUER` (defaults to `${SUPABASE_URL}/auth/v1`)
+  - `SUPABASE_JWKS_URL` (defaults to `${SUPABASE_URL}/auth/v1/.well-known/jwks.json`)
+  - `SUPABASE_JWT_AUD` (defaults to `authenticated`)
+  - `SUPABASE_JWT_SECRET` (only required if your JWT verification path needs it)
+  - `GOOGLE_API_KEY`
+  - `GOOGLE_MODEL` (defaults to `gemini-2.5-flash`)
+  - `GOOGLE_EMBEDDING_MODEL` (defaults to `models/gemini-embedding-001`)
+  - `GOOGLE_OAUTH_CLIENT_ID`
+  - `GOOGLE_OAUTH_CLIENT_SECRET`
+  - `GOOGLE_OAUTH_REDIRECT_URI`
+
 - **Database schema (Supabase / Postgres)**
   - The backend uses SQLAlchemy models, but Supabase/Postgres schema is created via SQL scripts in `docs/db/`.
   - Run these scripts once in the Supabase SQL editor (or against your local Postgres), in order:
+    - `docs/db/001_rag_pgvector.sql` (enables `vector` extension)
     - `docs/db/002_rag_documents.sql`
     - `docs/db/003_google_integrations.sql`
     - `docs/db/004_user_settings.sql`

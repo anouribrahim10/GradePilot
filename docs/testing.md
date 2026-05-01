@@ -28,13 +28,22 @@ Because GradePilot is planned as a Next.js frontend with a Python FastAPI backen
 ## Test Organization
 Tests should live inside the same overall project repository, but they should not be part of the production deployment.
 
+### Backend commands
+
+From the repo root (with your virtualenv active):
+
+```bash
+pytest
+pytest --cov=app
+```
+
+CI enforces coverage with `pytest --cov=app --cov-fail-under=80`.
+
 ### Planned Testing Stack
 - Frontend: Jest + React Testing Library
 - Backend: pytest + pytest-cov
 - CI: GitHub Actions
 
-### Documentation
-See `docs/testing.md` for the testing process, conventions, and commands.
 ```text
 frontend/
   __tests__/
