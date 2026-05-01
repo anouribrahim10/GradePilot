@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Generator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -69,7 +70,9 @@ def test_classes_create_list_and_summary(client: TestClient) -> None:
     assert payload["deadline_count"] == 0
 
 
-def test_chat_session_create_get_and_post_message_creates_classes(client: TestClient) -> None:
+def test_chat_session_create_get_and_post_message_creates_classes(
+    client: TestClient,
+) -> None:
     r = client.post("/chat/sessions")
     assert r.status_code == 200
     session_id = r.json()["id"]
@@ -93,7 +96,9 @@ def test_chat_session_create_get_and_post_message_creates_classes(client: TestCl
     assert any(a["type"] == "create_classes" for a in body["tool_actions"])
 
 
-def test_rag_ask_returns_fallback_when_no_chunks(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rag_ask_returns_fallback_when_no_chunks(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # Create class to satisfy "Class not found" check.
     r = client.post("/classes", json={"title": "History"})
     assert r.status_code == 200
@@ -101,19 +106,23 @@ def test_rag_ask_returns_fallback_when_no_chunks(client: TestClient, monkeypatch
 
     import app.routers.rag as rag_router
 
-    def _fake_retrieve_chunks(*args, **kwargs):  # noqa: ANN001, D401
+    def _fake_retrieve_chunks(*args: Any, **kwargs: Any) -> list[Any]:
         return []
 
     monkeypatch.setattr(rag_router, "retrieve_chunks", _fake_retrieve_chunks)
 
-    r = client.post(f"/classes/{class_id}/ask", json={"question": "What is the exam?"})
+    r = client.post(
+        f"/classes/{class_id}/ask", json={"question": "What is the exam?"}
+    )
     assert r.status_code == 200
     out = r.json()
     assert out["sources"] == []
     assert "don't have enough information" in out["answer"].lower()
 
 
-def test_rag_upload_material_raw_text_path(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rag_upload_material_raw_text_path(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     r = client.post("/classes", json={"title": "Biology"})
     assert r.status_code == 200
     class_id = r.json()["id"]
@@ -125,14 +134,18 @@ def test_rag_upload_material_raw_text_path(client: TestClient, monkeypatch: pyte
             self.document_id = uuid.uuid4()
             self.chunks_created = 2
 
-    def _fake_ingest_raw_text(*args, **kwargs):  # noqa: ANN001
+    def _fake_ingest_raw_text(*args: Any, **kwargs: Any) -> _Result:
         return _Result()
 
     monkeypatch.setattr(rag_router, "ingest_raw_text", _fake_ingest_raw_text)
 
     r = client.post(
         f"/classes/{class_id}/materials",
-        data={"raw_text": "hello world", "filename": "notes.txt", "document_type": "notes"},
+        data={
+            "raw_text": "hello world",
+            "filename": "notes.txt",
+            "document_type": "notes",
+        },
     )
     assert r.status_code == 200
     body = r.json()
