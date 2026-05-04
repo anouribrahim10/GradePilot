@@ -50,7 +50,7 @@ jobs:
           pip install \
             fastapi uvicorn pydantic httpx python-jose[cryptography] \
             python-multipart \
-            sqlalchemy google-genai google-auth-oauthlib google-api-python-client \
+            sqlalchemy psycopg[binary] google-genai google-auth-oauthlib google-api-python-client \
             pypdf
           pip install -e . --no-deps
       - name: Start backend
