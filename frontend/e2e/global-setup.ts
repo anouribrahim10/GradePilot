@@ -35,11 +35,13 @@ export default async function globalSetup(config: FullConfig) {
     body: JSON.stringify({ title: 'E2E Test Class' }),
   });
 
-  let classId: string | null = null;
-  if (classRes.ok) {
-    const cls = await classRes.json();
-    classId = cls.id;
+  if (!classRes.ok) {
+    throw new Error(`Failed to create test class: ${await classRes.text()}`);
   }
+
+  const cls = await classRes.json();
+  const classId: string = cls.id;
+  console.log(`[global-setup] created class id=${classId}`);
 
   // 3. Save class ID for tests to use
   fs.writeFileSync(
