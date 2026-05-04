@@ -8,6 +8,7 @@ import {
   createDeadline,
   createStudyPlan,
   deleteDeadline,
+  deleteNote,
   extractPdfText,
   generatePractice,
   getClassNotes,
@@ -337,6 +338,18 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
             loading={loading}
             summarising={summarising}
             notesSummary={notesSummary}
+            onDeleteNote={async (id) => {
+              setLoading(true);
+              setError(null);
+              try {
+                await deleteNote(classId, id);
+                setNotes((prev) => (prev ?? []).filter((n) => n.id !== id));
+              } catch (err: unknown) {
+                setError(err instanceof Error ? err.message : 'Failed to delete note');
+              } finally {
+                setLoading(false);
+              }
+            }}
             onUploadFiles={async (files) => {
               setError(null);
               setLoading(true);

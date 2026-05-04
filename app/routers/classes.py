@@ -167,6 +167,25 @@ def add_notes(
     return NotesOut.model_validate(notes)
 
 
+@router.delete("/{class_id}/notes/{notes_id}")
+def delete_notes_endpoint(
+    class_id: uuid.UUID,
+    notes_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    user_id = _user_uuid(user)
+    clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
+    if clazz is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+    ok = crud.delete_notes(
+        db=db, user_id=user_id, class_id=class_id, notes_id=notes_id
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Notes not found")
+    return {"ok": True}
+
+
 @router.post("/{class_id}/practice", response_model=PracticeGenerateOut)
 def generate_practice(
     class_id: uuid.UUID,

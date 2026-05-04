@@ -11,6 +11,7 @@ export function NotesPanel({
   onSummariseNotes,
   onSaveNotes,
   onImportDateAsDeadline,
+  onDeleteNote,
   loading,
   summarising,
   notesSummary,
@@ -23,6 +24,7 @@ export function NotesPanel({
   onSummariseNotes: () => void;
   onSaveNotes: () => void;
   onImportDateAsDeadline?: (dueText: string) => void;
+  onDeleteNote?: (id: string) => void;
   loading: boolean;
   summarising: boolean;
   notesSummary: SummariseOut | null;
@@ -45,8 +47,20 @@ export function NotesPanel({
                 key={n.id}
                 className="rounded-xl border border-white/10 bg-black/20 p-3"
               >
-                <div className="text-xs text-slate-300">
-                  {new Date(n.created_at).toLocaleString()}
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-slate-300">
+                    {new Date(n.created_at).toLocaleString()}
+                  </div>
+                  {onDeleteNote ? (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => onDeleteNote(n.id)}
+                      className="text-xs text-slate-300 hover:text-white disabled:opacity-60"
+                    >
+                      Remove
+                    </button>
+                  ) : null}
                 </div>
                 <div className="mt-2 text-sm text-slate-200 whitespace-pre-wrap line-clamp-5">
                   {n.notes_text}

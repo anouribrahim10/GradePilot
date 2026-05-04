@@ -113,6 +113,26 @@ def list_notes(
     return list(db.execute(stmt).scalars().all())
 
 
+def delete_notes(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    class_id: uuid.UUID,
+    notes_id: uuid.UUID,
+) -> bool:
+    stmt = select(ClassNotes).where(
+        ClassNotes.id == notes_id,
+        ClassNotes.class_id == class_id,
+        ClassNotes.user_id == user_id,
+    )
+    notes = db.execute(stmt).scalar_one_or_none()
+    if notes is None:
+        return False
+    db.delete(notes)
+    db.commit()
+    return True
+
+
 def create_study_plan(
     *,
     db: Session,
