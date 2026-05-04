@@ -54,7 +54,9 @@ jobs:
             pypdf
           pip install -e . --no-deps
       - name: Start backend
-        run: uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 &
+        run: |
+          export SUPABASE_URL=$(echo -n "$SUPABASE_URL" | tr -d '\n')
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 &
         env:
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
