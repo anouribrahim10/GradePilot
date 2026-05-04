@@ -23,7 +23,7 @@ test('3 — upload notes to a class', async ({ page }) => {
   const classId = getClassId();
   await page.goto(`/classes/${classId}`);
   await page.waitForLoadState('networkidle');
-  await page.getByRole('tab', { name: /notes/i }).click();
+  await page.getByRole('button', { name: 'Notes' }).click();
   const textarea = page.getByPlaceholder(/paste notes here/i);
   await textarea.waitFor({ state: 'visible', timeout: 10_000 });
   await textarea.fill('These are e2e test notes for the class.');
@@ -35,7 +35,7 @@ test('4 — generate a study plan', async ({ page }) => {
   const classId = getClassId();
   await page.goto(`/classes/${classId}`);
   await page.waitForLoadState('networkidle');
-  await page.getByRole('tab', { name: /study plan/i }).click();
+  await page.getByRole('button', { name: 'Notes' }).click();
   const btn = page.getByRole('button', { name: /generate plan/i });
   await btn.waitFor({ state: 'visible', timeout: 10_000 });
   await btn.click();
@@ -46,7 +46,7 @@ test('5 — generate a practice set', async ({ page }) => {
   const classId = getClassId();
   await page.goto(`/classes/${classId}`);
   await page.waitForLoadState('networkidle');
-  await page.getByRole('tab', { name: /practice/i }).click();
+  await page.getByRole('button', { name: 'Practice' }).click();
   const topicInput = page.getByPlaceholder(/topic/i);
   await topicInput.waitFor({ state: 'visible', timeout: 10_000 });
   await topicInput.fill('e2e topic');
