@@ -39,9 +39,27 @@ jobs:
     needs: test
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Install backend dependencies
+        run: |
+          pip install \
+            fastapi uvicorn pydantic httpx python-jose[cryptography] \
+            python-multipart \
+            sqlalchemy google-genai google-auth-oauthlib google-api-python-client \
+            pypdf
+          pip install -e . --no-deps
+      - name: Start backend
+        run: uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GOOGLE_GEMINI_API_KEY: ${{ secrets.GOOGLE_GEMINI_API_KEY }}
       - run: npm ci
         working-directory: frontend
       - run: npx playwright install chromium --with-deps
@@ -61,6 +79,7 @@ jobs:
           E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_BACKEND_URL: http://localhost:8000
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
