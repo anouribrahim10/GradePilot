@@ -11,7 +11,7 @@ export default async function globalSetup(config: FullConfig) {
   const email = process.env.E2E_EMAIL!;
   const password = process.env.E2E_PASSWORD!;
 
-  // 1. Sign in via Supabase REST API
+  // 1. Sign in via Supabase REST API to get tokens
   const res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
     method: 'POST',
     headers: {
@@ -23,7 +23,8 @@ export default async function globalSetup(config: FullConfig) {
   });
 
   if (!res.ok) throw new Error(`Supabase sign-in failed: ${await res.text()}`);
-  const { access_token, refresh_token } = await res.json();
+  const session = await res.json();
+  const { access_token, refresh_token } = session;
 
   // 2. Create the e2e test class via backend API
   const classRes = await fetch(`${BACKEND_URL}/classes`, {
@@ -49,35 +50,18 @@ export default async function globalSetup(config: FullConfig) {
     JSON.stringify({ classId })
   );
 
-  // 3. Set auth cookies so @supabase/ssr picks them up
-  const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
-  const cookieName = `sb-${projectRef}-auth-token`;
-
+  // 3. Sign in through the browser so @supabase/ssr sets all cookies correctly
   const browser = await chromium.launch();
   const context = await browser.newContext({ baseURL });
   const page = await context.newPage();
-  await page.goto('/');
 
-  // Set the auth token as a cookie (used by @supabase/ssr)
-  await context.addCookies([
-    {
-      name: `${cookieName}.0`,
-      value: JSON.stringify({ access_token, refresh_token, token_type: 'bearer' }),
-      domain: 'localhost',
-      path: '/',
-      httpOnly: false,
-      secure: false,
-      sameSite: 'Lax',
-    },
-  ]);
-
-  // Also set in localStorage as fallback
-  await page.evaluate(
-    ({ key, access, refresh }) => {
-      localStorage.setItem(key, JSON.stringify({ access_token: access, refresh_token: refresh }));
-    },
-    { key: cookieName, access: access_token, refresh: refresh_token }
-  );
+  // Navigate to auth page and sign in via the UI
+  await page.goto('/auth');
+  await page.waitForLoadState('networkidle');
+  await page.getByPlaceholder(/email/i).fill(email);
+  await page.getByPlaceholder(/password/i).fill(password);
+  await page.getByRole('button', { name: /^sign in$/i }).last().click();
+  await page.waitForURL('**/chat', { timeout: 15_000 });
 
   await context.storageState({ path: path.join(__dirname, '.auth.json') });
   await browser.close();
