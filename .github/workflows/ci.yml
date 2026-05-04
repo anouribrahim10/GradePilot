@@ -54,7 +54,7 @@ jobs:
             pypdf
           pip install -e . --no-deps
       - name: Start backend
-        run: uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+        run: uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 &
         env:
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
@@ -91,4 +91,7 @@ jobs:
         with:
           name: playwright-report
           path: frontend/test-results/
+      - name: Print backend logs on failure
+        if: failure()
+        run: cat /tmp/backend.log || true
 

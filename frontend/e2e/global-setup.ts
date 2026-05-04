@@ -36,7 +36,8 @@ export default async function globalSetup(config: FullConfig) {
   });
 
   if (!classRes.ok) {
-    throw new Error(`Failed to create test class: ${await classRes.text()}`);
+    const body = await classRes.text();
+    throw new Error(`Failed to create test class (${classRes.status}): ${body}`);
   }
 
   const cls = await classRes.json();
