@@ -5,11 +5,12 @@ const E2E_PASSWORD = process.env.E2E_PASSWORD ?? 'e2epassword123';
 
 async function signIn(page: Page) {
   await page.goto('/auth');
-  await page.getByRole('button', { name: 'Sign in' }).first().click();
+  await page.waitForLoadState('networkidle');
+  // ensure we're on sign-in tab (default), then fill credentials
   await page.getByPlaceholder(/email/i).fill(E2E_EMAIL);
   await page.getByPlaceholder(/password/i).fill(E2E_PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).last().click();
-  await page.waitForURL('**/chat');
+  await page.getByRole('button', { name: /^sign in$/i }).last().click();
+  await page.waitForURL('**/chat', { timeout: 15_000 });
 }
 
 test('1 — sign in', async ({ page }) => {
