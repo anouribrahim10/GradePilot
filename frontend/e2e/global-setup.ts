@@ -44,27 +44,39 @@ export default async function globalSetup(config: FullConfig) {
   const classId: string = cls.id;
   console.log(`[global-setup] created class id=${classId}`);
 
-  // 3. Save class ID for tests to use
   fs.writeFileSync(
     path.join(__dirname, '.e2e-state.json'),
     JSON.stringify({ classId })
   );
 
-  // 4. Inject tokens into browser storage
+  // 3. Set auth cookies so @supabase/ssr picks them up
+  const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
+  const cookieName = `sb-${projectRef}-auth-token`;
+
   const browser = await chromium.launch();
   const context = await browser.newContext({ baseURL });
   const page = await context.newPage();
   await page.goto('/');
 
-  await page.evaluate(
-    ({ url, access, refresh }) => {
-      const storageKey = `sb-${new URL(url).hostname.split('.')[0]}-auth-token`;
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify({ access_token: access, refresh_token: refresh })
-      );
+  // Set the auth token as a cookie (used by @supabase/ssr)
+  await context.addCookies([
+    {
+      name: `${cookieName}.0`,
+      value: JSON.stringify({ access_token, refresh_token, token_type: 'bearer' }),
+      domain: 'localhost',
+      path: '/',
+      httpOnly: false,
+      secure: false,
+      sameSite: 'Lax',
     },
-    { url: supabaseUrl, access: access_token, refresh: refresh_token }
+  ]);
+
+  // Also set in localStorage as fallback
+  await page.evaluate(
+    ({ key, access, refresh }) => {
+      localStorage.setItem(key, JSON.stringify({ access_token: access, refresh_token: refresh }));
+    },
+    { key: cookieName, access: access_token, refresh: refresh_token }
   );
 
   await context.storageState({ path: path.join(__dirname, '.auth.json') });
