@@ -6,6 +6,8 @@ export default defineConfig({
   use: {
     baseURL: process.env.BASE_URL ?? 'http://localhost:3000',
     headless: true,
+    screenshot: 'only-on-failure',
+    trace: 'on-first-retry',
   },
   webServer: {
     command: 'npm run dev',
