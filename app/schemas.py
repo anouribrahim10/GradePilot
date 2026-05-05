@@ -75,9 +75,16 @@ class StudyPlanOut(BaseModel):
     created_at: datetime
 
 
+class StudyPlanTaskAI(BaseModel):
+    title: str
+    estimated_hours: float = Field(ge=0.5, le=8.0)
+    priority: Literal["High", "Medium", "Low"]
+    deadline_id: str | None = None
+
+
 class StudyPlanAIItem(BaseModel):
     day: str
-    tasks: list[str]
+    tasks: list[StudyPlanTaskAI]
 
 
 class StudyPlanAI(BaseModel):

@@ -39,20 +39,47 @@ def _parse_retry_after_seconds(msg: str) -> int | None:
         return None
 
 
-def _build_prompt(*, class_title: str, notes_text: str) -> str:
+def _build_prompt(
+    *,
+    class_title: str,
+    notes_text: str,
+    deadlines: list[dict[str, Any]],
+    availability: list[dict[str, str]] | None,
+) -> str:
+    availability_text = json.dumps(availability or [], ensure_ascii=False)
+    deadlines_text = json.dumps(deadlines, ensure_ascii=False)
     return f"""You are an expert study coach.
 
-Create a practical study plan for the course "{class_title}" based on the student's notes.
+Create a practical day-by-day study plan for the course "{class_title}" based on the student's notes, deadlines, and availability.
+
+Inputs:
+- Deadlines (JSON): {deadlines_text}
+- Weekly availability blocks (JSON): {availability_text}
 
 Return ONLY valid JSON matching this schema:
 {{
   "title": string,
   "goals": string[],
-  "schedule": [{{ "day": string, "tasks": string[] }}]
+  "schedule": [
+    {{
+      "day": string,
+      "tasks": [
+        {{
+          "title": string,
+          "estimated_hours": number,
+          "priority": "High" | "Medium" | "Low",
+          "deadline_id": string | null
+        }}
+      ]
+    }}
+  ]
 }}
 
 Constraints:
+- Organize the plan day-by-day.
 - Keep tasks concrete and actionable.
+- estimated_hours must be realistic (0.5 to 8 per task).
+- Assign priority levels intelligently.
 - Include 7-14 days in schedule depending on content density.
 - No markdown, no extra text outside JSON.
 
@@ -62,7 +89,11 @@ Student notes:
 
 
 def generate_study_plan(
-    *, class_title: str, notes_text: str
+    *,
+    class_title: str,
+    notes_text: str,
+    deadlines: list[dict[str, Any]],
+    availability: list[dict[str, str]] | None = None,
 ) -> tuple[dict[str, Any], str]:
     settings = get_settings()
     if settings.google_api_key is None or settings.google_api_key == "":
@@ -70,7 +101,12 @@ def generate_study_plan(
 
     client = genai.Client(api_key=settings.google_api_key)
     model_name = settings.google_model
-    prompt = _build_prompt(class_title=class_title, notes_text=notes_text)
+    prompt = _build_prompt(
+        class_title=class_title,
+        notes_text=notes_text,
+        deadlines=deadlines,
+        availability=availability,
+    )
 
     try:
         resp = client.models.generate_content(

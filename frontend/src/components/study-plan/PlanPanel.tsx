@@ -18,7 +18,10 @@ export function PlanPanel({
   const completedTasks = plan?.plan_json.completed_tasks ?? [];
   const allTasks = plan?.plan_json.schedule?.flatMap(d => d.tasks) ?? [];
   const totalCount = allTasks.length;
-  const completedCount = allTasks.filter(t => completedTasks.includes(t)).length;
+  const completedCount = allTasks.filter(t => {
+    const title = typeof t === 'string' ? t : t.title;
+    return completedTasks.includes(title);
+  }).length;
   const progressPercent = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
 
   return (
@@ -79,20 +82,39 @@ export function PlanPanel({
                       className="rounded-xl border border-white/10 bg-black/20 p-3"
                     >
                       <div className="text-sm font-medium text-white">{day.day}</div>
-                      <ul className="mt-2 text-sm text-slate-300 space-y-2">
+                      <ul className="mt-2 text-sm text-slate-300 space-y-3">
                         {day.tasks.map((t) => {
-                          const isCompleted = completedTasks.includes(t);
+                          const isLegacyString = typeof t === 'string';
+                          const taskTitle = isLegacyString ? t : t.title;
+                          const isCompleted = completedTasks.includes(taskTitle);
+                          
                           return (
-                            <li key={t} className="flex items-start gap-2">
+                            <li key={taskTitle} className="flex items-start gap-2">
                               <input 
                                 type="checkbox"
                                 checked={isCompleted}
-                                onChange={(e) => onToggleTask(t, e.target.checked)}
+                                onChange={(e) => onToggleTask(taskTitle, e.target.checked)}
                                 className="mt-1 w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer shrink-0"
                               />
-                              <span className={`transition-colors ${isCompleted ? 'text-indigo-400/60 line-through' : 'text-slate-300'}`}>
-                                {t}
-                              </span>
+                              <div className="flex flex-col min-w-0 flex-1">
+                                <span className={`transition-colors ${isCompleted ? 'text-indigo-400/60 line-through' : 'text-slate-300'}`}>
+                                  {taskTitle}
+                                </span>
+                                {!isLegacyString && (
+                                  <div className="flex items-center gap-2 mt-1.5">
+                                    <span className={`text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm ${
+                                      t.priority === 'High' ? 'bg-red-500/20 text-red-400' :
+                                      t.priority === 'Medium' ? 'bg-amber-500/20 text-amber-400' :
+                                      'bg-emerald-500/20 text-emerald-400'
+                                    }`}>
+                                      {t.priority}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 bg-black/30 px-1.5 py-0.5 rounded-sm">
+                                      {t.estimated_hours}h
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                             </li>
                           );
                         })}
