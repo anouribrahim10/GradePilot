@@ -14,11 +14,11 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      SERVICE_NAME: gradepilot
+      SERVICE_NAME: gradepilot-anour
       REGION: ${{ secrets.GCP_REGION }}
       PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-      REPO_NAME: gradepilot-repo
-      IMAGE_NAME: gradepilot
+      REPO_NAME: gradepilot-anour-repo
+      IMAGE_NAME: gradepilot-anour
 
     steps:
       - name: Checkout code
