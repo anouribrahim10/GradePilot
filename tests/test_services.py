@@ -121,7 +121,19 @@ def test_study_plan_service_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
         {
             "title": "CS Plan",
             "goals": ["Understand sorting"],
-            "schedule": [{"day": "Day 1", "tasks": ["Read chapter 1"]}],
+            "schedule": [
+                {
+                    "day": "Day 1",
+                    "tasks": [
+                        {
+                            "title": "Read chapter 1",
+                            "estimated_hours": 2.0,
+                            "priority": "High",
+                            "deadline_id": None,
+                        }
+                    ],
+                }
+            ],
         }
     )
     monkeypatch.setattr(svc, "genai", _patch_genai(text=payload))
