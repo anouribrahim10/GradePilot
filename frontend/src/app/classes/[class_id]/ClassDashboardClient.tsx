@@ -13,6 +13,7 @@ import {
   getClassNotes,
   getClassSummary,
   getLatestStudyPlan,
+  getRecommendations,
   listDeadlines,
   summariseDocument,
   updateDeadline,
@@ -24,6 +25,7 @@ import {
   type MaterialIngestOut,
   type NotesOut,
   type PracticeQuestion,
+  type RecommendedResource,
   type StudyPlanOut,
   type SummariseOut,
 } from '@/lib/backend';
@@ -33,8 +35,9 @@ import { NotesPanel } from '@/components/study-plan/NotesPanel';
 import { PracticePanel } from '@/components/study-plan/PracticePanel';
 import { RagPanel } from '@/components/study-plan/RagPanel';
 import { PlanPanel } from '@/components/study-plan/PlanPanel';
+import { ResourcesPanel } from '@/components/study-plan/ResourcesPanel';
 
-type Tab = 'overview' | 'deadlines' | 'notes' | 'practice';
+type Tab = 'overview' | 'deadlines' | 'notes' | 'practice' | 'resources';
 
 async function filesToText(files: File[]): Promise<{ filename: string; text: string }> {
   const parts: string[] = [];
@@ -88,6 +91,9 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
   const [ragUploadDocType, setRagUploadDocType] = useState('reading');
   const [ragAskDocFilter, setRagAskDocFilter] = useState('');
   const [ragPasteToIndex, setRagPasteToIndex] = useState('');
+
+  const [resources, setResources] = useState<RecommendedResource[] | null>(null);
+  const [resourcesLoading, setResourcesLoading] = useState(false);
 
   const classTitle = summary?.clazz?.title ?? 'Class';
 
@@ -165,10 +171,25 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
       ) : null}
 
       <div className="flex flex-wrap gap-2 mb-6">
-        {(['overview', 'deadlines', 'notes', 'practice'] as const).map((t) => (
+        {(['overview', 'deadlines', 'notes', 'practice', 'resources'] as const).map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => {
+              setTab(t);
+              if (t === 'resources' && !resources && !resourcesLoading) {
+                (async () => {
+                  setResourcesLoading(true);
+                  try {
+                    const res = await getRecommendations(classId);
+                    setResources(res.resources);
+                  } catch (e: unknown) {
+                    setError(e instanceof Error ? e.message : 'Failed to load recommendations');
+                  } finally {
+                    setResourcesLoading(false);
+                  }
+                })();
+              }
+            }}
             className={[
               'px-3 py-1.5 rounded-xl text-sm font-semibold border transition-colors',
               tab === t
@@ -490,6 +511,26 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
               setError(e instanceof Error ? e.message : 'Failed to generate practice');
             } finally {
               setLoading(false);
+            }
+          }}
+        />
+      ) : null}
+
+      {tab === 'resources' ? (
+        <ResourcesPanel
+          classTitle={classTitle}
+          resources={resources}
+          loading={resourcesLoading}
+          onRefresh={async () => {
+            setResourcesLoading(true);
+            setError(null);
+            try {
+              const res = await getRecommendations(classId);
+              setResources(res.resources);
+            } catch (e: unknown) {
+              setError(e instanceof Error ? e.message : 'Failed to load recommendations');
+            } finally {
+              setResourcesLoading(false);
             }
           }}
         />
