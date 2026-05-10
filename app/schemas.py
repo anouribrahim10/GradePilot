@@ -105,6 +105,20 @@ class PracticeGenerateOut(BaseModel):
     questions: list[PracticeQuestion]
 
 
+class RecommendedResource(BaseModel):
+    title: str
+    url: str
+    explanation: str
+
+
+class RecommendationsAI(BaseModel):
+    resources: list[RecommendedResource]
+
+
+class RecommendationsOut(BaseModel):
+    resources: list[RecommendedResource]
+
+
 class SummariseRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=255)
     raw_text: str = Field(min_length=1)
