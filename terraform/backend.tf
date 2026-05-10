@@ -1,6 +1,6 @@
 terraform {
   backend "gcs" {
-    bucket = "terraform-state-gradepilot-kimiwa"
+    bucket = "terraform-state-gradepilot-anour"
     prefix = "terraform/state"
   }
 }
