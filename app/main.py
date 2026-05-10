@@ -5,7 +5,6 @@ from app.routers.integrations_google import router as google_integrations_router
 from app.routers.rag import router as rag_router
 from app.routers.settings import router as settings_router
 from app.routers.summarise import router as summarise_router
-from app.routers.recommendations import router as recommendations_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -49,7 +48,6 @@ app.include_router(google_integrations_router)
 app.include_router(rag_router)
 app.include_router(settings_router)
 app.include_router(summarise_router)
-app.include_router(recommendations_router)
 
 
 @app.get("/health", tags=["system"])
