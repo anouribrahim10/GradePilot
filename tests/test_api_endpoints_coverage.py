@@ -355,6 +355,16 @@ def test_classes_notes_deadlines_and_plans_endpoints(
     assert r.status_code == 200
     assert r.json() == {"ok": True}
 
+    # Delete notes
+    r = client.delete(f"/classes/{class_id}/notes/{notes_id}")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+
+    # Verify notes are gone
+    r = client.get(f"/classes/{class_id}/notes")
+    assert r.status_code == 200
+    assert not any(n["id"] == notes_id for n in r.json())
+
 
 def test_summarise_and_google_routes_smoke(
     client: TestClient,
