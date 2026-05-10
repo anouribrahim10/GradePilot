@@ -14,15 +14,19 @@ from app.schemas import RecommendedResource, RecommendationsAI
 
 logger = logging.getLogger("gradepilot.ai")
 
+
 class RecommendationError(RuntimeError):
     pass
+
 
 class RecommendationRateLimitError(RecommendationError):
     def __init__(self, message: str, *, retry_after_seconds: int | None = None):
         super().__init__(message)
         self.retry_after_seconds = retry_after_seconds
 
+
 _RETRY_RE = re.compile(r"Please retry in\s+([0-9]+(?:\.[0-9]+)?)s", re.IGNORECASE)
+
 
 def _parse_retry_after_seconds(msg: str) -> int | None:
     m = _RETRY_RE.search(msg or "")
@@ -32,6 +36,7 @@ def _parse_retry_after_seconds(msg: str) -> int | None:
         return max(1, int(float(m.group(1)) + 0.999))
     except Exception:
         return None
+
 
 def _build_prompt(*, class_title: str, context_text: str) -> str:
     return f"""You are an expert academic advisor and study coach.
@@ -64,6 +69,7 @@ Return JSON matching this exact schema:
   ]
 }}
 """
+
 
 def generate_recommendations(
     *, class_title: str, context_text: str
@@ -120,7 +126,9 @@ def generate_recommendations(
             retry_after_seconds=None,
         ) from e
     except Exception as e:
-        logger.exception("recommendation_generation_failed err=%s", e.__class__.__name__)
+        logger.exception(
+            "recommendation_generation_failed err=%s", e.__class__.__name__
+        )
         raise RecommendationError(
             f"Recommendation generation failed ({e.__class__.__name__})"
         ) from e

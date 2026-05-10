@@ -13,6 +13,7 @@ from app.deps.auth import CurrentUser, get_current_user
 from app.main import app
 import app.routers.recommendations as recommendations_router
 
+
 @pytest.fixture()
 def client() -> Generator[TestClient, None, None]:
     engine = create_engine(
@@ -43,23 +44,32 @@ def client() -> Generator[TestClient, None, None]:
 
     app.dependency_overrides.clear()
 
-def test_get_recommendations_endpoint(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+
+def test_get_recommendations_endpoint(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # 1. Create a class
     r = client.post("/classes", json={"title": "Computer Science 101"})
     assert r.status_code == 200
     class_id = r.json()["id"]
 
     # 2. Mock the recommendation service
-    def _fake_generate_recommendations(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+    def _fake_generate_recommendations(
+        *args: Any, **kwargs: Any
+    ) -> list[dict[str, str]]:
         return [
             {
                 "title": "Introduction to Computer Science",
                 "url": "https://www.youtube.com/watch?v=123",
-                "explanation": "Great intro video."
+                "explanation": "Great intro video.",
             }
         ]
-    
-    monkeypatch.setattr(recommendations_router, "generate_recommendations", _fake_generate_recommendations)
+
+    monkeypatch.setattr(
+        recommendations_router,
+        "generate_recommendations",
+        _fake_generate_recommendations,
+    )
 
     # 3. Call the endpoint
     r = client.get(f"/classes/{class_id}/recommendations")
@@ -68,6 +78,7 @@ def test_get_recommendations_endpoint(client: TestClient, monkeypatch: pytest.Mo
     assert "resources" in body
     assert len(body["resources"]) == 1
     assert body["resources"][0]["title"] == "Introduction to Computer Science"
+
 
 def test_get_recommendations_not_found(client: TestClient) -> None:
     fake_id = uuid.uuid4()
