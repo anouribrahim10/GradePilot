@@ -10,6 +10,7 @@ export function NotesPanel({
   onUploadFiles,
   onSummariseNotes,
   onSaveNotes,
+  onDeleteNote,
   onImportDateAsDeadline,
   loading,
   summarising,
@@ -22,6 +23,7 @@ export function NotesPanel({
   onUploadFiles: (files: File[]) => void;
   onSummariseNotes: () => void;
   onSaveNotes: () => void;
+  onDeleteNote?: (notesId: string) => void;
   onImportDateAsDeadline?: (dueText: string) => void;
   loading: boolean;
   summarising: boolean;
@@ -43,10 +45,21 @@ export function NotesPanel({
             {notes.slice(0, 5).map((n) => (
               <div
                 key={n.id}
-                className="rounded-xl border border-white/10 bg-black/20 p-3"
+                className="group relative rounded-xl border border-white/10 bg-black/20 p-3"
               >
-                <div className="text-xs text-slate-300">
-                  {new Date(n.created_at).toLocaleString()}
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-slate-300">
+                    {new Date(n.created_at).toLocaleString()}
+                  </div>
+                  {onDeleteNote && (
+                    <button
+                      onClick={() => onDeleteNote(n.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-rose-400 hover:text-rose-300 px-2 py-1"
+                      title="Delete note"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
                 <div className="mt-2 text-sm text-slate-200 whitespace-pre-wrap line-clamp-5">
                   {n.notes_text}

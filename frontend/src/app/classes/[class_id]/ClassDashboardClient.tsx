@@ -8,6 +8,7 @@ import {
   createDeadline,
   createStudyPlan,
   deleteDeadline,
+  deleteNotes,
   extractPdfText,
   generatePractice,
   getClassNotes,
@@ -404,6 +405,19 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
                 setLastUpload(null);
               } catch (e: unknown) {
                 setError(e instanceof Error ? e.message : 'Failed to save notes');
+              } finally {
+                setLoading(false);
+              }
+            }}
+            onDeleteNote={async (notesId) => {
+              if (!window.confirm('Are you sure you want to delete this note?')) return;
+              setLoading(true);
+              setError(null);
+              try {
+                await deleteNotes(classId, notesId);
+                setNotes((prev) => (prev ?? []).filter((n) => n.id !== notesId));
+              } catch (e: unknown) {
+                setError(e instanceof Error ? e.message : 'Failed to delete note');
               } finally {
                 setLoading(false);
               }

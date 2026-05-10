@@ -188,6 +188,12 @@ export function getClassNotes(classId: string) {
   return backendFetch<NotesOut[]>(`/classes/${classId}/notes`);
 }
 
+export function deleteNotes(classId: string, notesId: string) {
+  return backendFetch<{ ok: boolean }>(`/classes/${classId}/notes/${notesId}`, {
+    method: 'DELETE',
+  });
+}
+
 export function createStudyPlan(classId: string, notesId?: string) {
   return backendFetch<StudyPlanOut>(`/classes/${classId}/study-plan`, {
     method: 'POST',
