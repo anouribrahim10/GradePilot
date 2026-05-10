@@ -121,13 +121,25 @@ def test_study_plan_service_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
         {
             "title": "CS Plan",
             "goals": ["Understand sorting"],
-            "schedule": [{"day": "Day 1", "tasks": ["Read chapter 1"]}],
+            "schedule": [
+                {
+                    "day": "Day 1",
+                    "tasks": [
+                        {
+                            "title": "Read chapter 1",
+                            "estimated_hours": 2.0,
+                            "priority": "High",
+                            "deadline_id": None,
+                        }
+                    ],
+                }
+            ],
         }
     )
     monkeypatch.setattr(svc, "genai", _patch_genai(text=payload))
     with patch("app.services.study_plan.get_settings", return_value=_mock_settings()):
         plan, model_name = svc.generate_study_plan(
-            class_title="CS 101", notes_text="Sorting algorithms notes."
+            class_title="CS 101", notes_text="Sorting algorithms notes.", deadlines=[]
         )
     assert plan["title"] == "CS Plan"
     assert model_name == "gemini-test"
@@ -140,7 +152,9 @@ def test_study_plan_service_invalid_json(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(svc, "genai", _patch_genai(text="bad json"))
     with patch("app.services.study_plan.get_settings", return_value=_mock_settings()):
         with pytest.raises(StudyPlanGenerationError, match="valid study-plan JSON"):
-            svc.generate_study_plan(class_title="CS 101", notes_text="notes")
+            svc.generate_study_plan(
+                class_title="CS 101", notes_text="notes", deadlines=[]
+            )
 
 
 def test_study_plan_service_no_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -150,7 +164,9 @@ def test_study_plan_service_no_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     with patch("app.services.study_plan.get_settings") as mock_settings:
         mock_settings.return_value = MagicMock(google_api_key=None)
         with pytest.raises(StudyPlanGenerationError, match="GOOGLE_API_KEY"):
-            svc.generate_study_plan(class_title="CS 101", notes_text="notes")
+            svc.generate_study_plan(
+                class_title="CS 101", notes_text="notes", deadlines=[]
+            )
 
 
 def test_study_plan_service_model_exception(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,7 +176,9 @@ def test_study_plan_service_model_exception(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(svc, "genai", _patch_genai(exc=RuntimeError("timeout")))
     with patch("app.services.study_plan.get_settings", return_value=_mock_settings()):
         with pytest.raises(StudyPlanGenerationError, match="RuntimeError"):
-            svc.generate_study_plan(class_title="CS 101", notes_text="notes")
+            svc.generate_study_plan(
+                class_title="CS 101", notes_text="notes", deadlines=[]
+            )
 
 
 # ---------------------------------------------------------------------------

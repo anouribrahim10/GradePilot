@@ -39,7 +39,11 @@ def test_notes_to_study_plan_flow(monkeypatch: MonkeyPatch) -> None:
         return CurrentUser(user_id=str(user_uuid), claims={"sub": str(user_uuid)})
 
     def _fake_generate_study_plan(
-        *, class_title: str, notes_text: str
+        *,
+        class_title: str,
+        notes_text: str,
+        deadlines: Any = None,
+        availability: Any = None,
     ) -> tuple[dict[str, Any], str]:
         assert class_title == "Math 101"
         assert "limits" in notes_text
@@ -47,7 +51,19 @@ def test_notes_to_study_plan_flow(monkeypatch: MonkeyPatch) -> None:
             {
                 "title": "Math 101 plan",
                 "goals": ["Understand limits"],
-                "schedule": [{"day": "Day 1", "tasks": ["Review limits basics"]}],
+                "schedule": [
+                    {
+                        "day": "Day 1",
+                        "tasks": [
+                            {
+                                "title": "Review limits basics",
+                                "estimated_hours": 1.0,
+                                "priority": "Medium",
+                                "deadline_id": None,
+                            }
+                        ],
+                    }
+                ],
             },
             "fake-model",
         )

@@ -136,7 +136,15 @@ export type StudyPlanOut = {
   plan_json: {
     title: string;
     goals: string[];
-    schedule: { day: string; tasks: string[] }[];
+    schedule: { 
+      day: string; 
+      tasks: (string | {
+        title: string;
+        estimated_hours: number;
+        priority: string;
+        deadline_id?: string | null;
+      })[];
+    }[];
     completed_tasks?: string[];
   };
   model: string;

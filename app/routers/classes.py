@@ -217,9 +217,34 @@ def create_study_plan_endpoint(
         if notes is None:
             raise HTTPException(status_code=400, detail="No notes available for class")
 
+    deadlines = crud.list_deadlines(db=db, user_id=user_id, class_id=class_id)
+    deadline_payload = [
+        {
+            "id": str(d.id),
+            "title": d.title,
+            "due_text": d.due_text,
+            "due_at": (d.due_at.isoformat() if d.due_at else None),
+        }
+        for d in deadlines
+    ]
+
+    availability = [
+        {
+            "day": b.get("day", ""),
+            "start_time": b.get("start_time", ""),
+            "end_time": b.get("end_time", ""),
+        }
+        for b in (
+            clazz.availability_json.get("blocks", []) if clazz.availability_json else []
+        )
+    ]
+
     try:
         plan_json, model_name = generate_study_plan(
-            class_title=clazz.title, notes_text=notes.notes_text
+            class_title=clazz.title,
+            notes_text=notes.notes_text,
+            deadlines=deadline_payload,
+            availability=availability,
         )
     except StudyPlanRateLimitError as e:
         headers = {}
