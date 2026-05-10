@@ -145,21 +145,11 @@ export type StudyPlanOut = {
 
 export type PracticeQuestion = { q: string; a: string };
 
-export type RecommendedResource = {
-  title: string;
-  url: string;
-  explanation: string;
-};
-
 export function generatePractice(classId: string, topic: string, count: number, difficulty: string) {
   return backendFetch<{ questions: PracticeQuestion[] }>(`/classes/${classId}/practice`, {
     method: 'POST',
     body: JSON.stringify({ topic, count, difficulty }),
   });
-}
-
-export function getRecommendations(classId: string) {
-  return backendFetch<{ resources: RecommendedResource[] }>(`/classes/${classId}/recommendations`);
 }
 
 export function listClasses() {
