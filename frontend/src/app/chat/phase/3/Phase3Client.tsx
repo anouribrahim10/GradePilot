@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { sendChatMessage } from '@/lib/backend';
 import { OnboardingStepper } from '@/components/onboarding/OnboardingStepper';
+import { OnboardingShell } from '@/components/onboarding/OnboardingShell';
 
 type TermChoice = 'from_syllabus' | 'fall' | 'spring';
 type Snapshot = { timezone?: string | null; start?: string | null; end?: string | null; term?: string | null };
@@ -99,7 +100,7 @@ export default function Phase3Client() {
   const hasSyllabusDate = Boolean(snapshot?.start && snapshot?.end);
 
   return (
-    <div className="min-h-screen w-full bg-[#0A0B10] text-[#F8FAFC] flex flex-col items-center justify-center px-4">
+    <OnboardingShell>
       <div className="w-full max-w-xl">
         <OnboardingStepper phase={3} />
 
@@ -183,6 +184,6 @@ export default function Phase3Client() {
           </div>
         </div>
       </div>
-    </div>
+    </OnboardingShell>
   );
 }

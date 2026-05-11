@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createOrGetChatSession, sendChatMessage } from '@/lib/backend';
 import { OnboardingStepper } from '@/components/onboarding/OnboardingStepper';
+import { OnboardingShell } from '@/components/onboarding/OnboardingShell';
 
 export default function Phase1Client() {
   const router = useRouter();
@@ -27,7 +28,7 @@ export default function Phase1Client() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-[#0A0B10] text-[#F8FAFC] flex flex-col items-center justify-center px-4">
+    <OnboardingShell>
       <div className="w-full max-w-xl">
         <OnboardingStepper phase={1} />
 
@@ -61,6 +62,6 @@ export default function Phase1Client() {
           </button>
         </div>
       </div>
-    </div>
+    </OnboardingShell>
   );
 }
