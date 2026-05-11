@@ -295,7 +295,7 @@ export default function ClassesIndexClient() {
           </div>
           <div className="mt-4">
             <Link
-              href="/chat?new=1"
+              href="/chat/phase/1"
               className="rounded-xl bg-white text-black px-4 py-2 text-sm font-semibold"
             >
               Start onboarding
