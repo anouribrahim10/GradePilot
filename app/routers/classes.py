@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import logging
+import math
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
 from app.agents.replanner.graph import ReplannerInput, Trigger, run_replanner
@@ -19,7 +22,10 @@ from app.schemas import (
     DeadlineCreate,
     DeadlineOut,
     DeadlineImportOut,
+    SyllabusOnboardingOut,
     DeadlineUpdate,
+    GradeBookState,
+    LearningResourcesOut,
     NotesCreate,
     NotesOut,
     PracticeGenerateOut,
@@ -29,17 +35,27 @@ from app.schemas import (
     StudyPlanSemesterCreate,
     StudyPlanUpdate,
 )
+from app.services.datetime_parse import parse_user_due_to_datetime
 from app.services.deadlines.extract import (
     DeadlineExtractError,
     DeadlineExtractRateLimitError,
     extract_deadlines_from_text,
 )
+from app.services.rag.embeddings import EmbeddingsError
+from app.services.syllabus.onboarding_bootstrap import run_onboarding_syllabus_bootstrap
 from app.services.pdf_text import extract_text_from_pdf_bytes
+from app.services.learning_resources import (
+    LearningResourcesError,
+    LearningResourcesRateLimitError,
+    generate_learning_resources,
+)
 from app.services.practice import (
     PracticeGenerationError,
     PracticeRateLimitError,
     generate_practice_questions,
 )
+from app.services.scheduling.anchors import compute_next_anchor
+from app.services.scheduling.plan_sessions import schedule_plan_day_sessions
 from app.services.study_plan import (
     StudyPlanGenerationError,
     StudyPlanRateLimitError,
@@ -50,6 +66,9 @@ from app.services.study_plan_semester import (
     SemesterStudyPlanRateLimitError,
     generate_semester_study_plan,
 )
+
+# Per-lecture cap when building the practice prompt (avoids huge uploads).
+_PRACTICE_NOTE_MAX_CHARS = 8000
 
 router = APIRouter(prefix="/classes", tags=["classes"])
 
@@ -87,6 +106,68 @@ def _user_uuid(user: CurrentUser) -> uuid.UUID:
         raise HTTPException(status_code=401, detail="Invalid user id")
 
 
+def _compute_plan_horizon(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    class_id: uuid.UUID,
+    clazz: Any,
+) -> tuple[int, str]:
+    """Return ``(horizon_days, horizon_reason)`` for the notes-driven plan.
+
+    Uses the same ``compute_next_anchor`` used by the scheduler so the plan
+    horizon, the auto-booked study session, and the user's mental model all
+    agree on what "the next checkpoint" means: earliest of the next lecture
+    (from ``meeting_pattern``), the next deadline, or a 7-day fallback.
+
+    ``horizon_days`` is at least 1. Falls back to a 7-day "next checkpoint"
+    if the anchor calculation cannot find anything (e.g. malformed timezone).
+    """
+    try:
+        deadlines = crud.list_deadlines(db=db, user_id=user_id, class_id=class_id)
+        deadline_payload: list[dict[str, Any]] = [
+            {
+                "id": str(d.id),
+                "title": d.title,
+                "due_text": d.due_text,
+                "due_at": (d.due_at.isoformat() if d.due_at else None),
+            }
+            for d in deadlines
+            if d.completed_at is None
+        ]
+        class_data: dict[str, Any] = {
+            "title": clazz.title,
+            "timezone": clazz.timezone,
+            "semester_start": clazz.semester_start,
+            "semester_end": clazz.semester_end,
+            "meeting_pattern": clazz.meeting_pattern,
+        }
+        now = datetime.now(timezone.utc)
+        anchor = compute_next_anchor(
+            class_data=class_data,
+            deadlines=deadline_payload,
+            from_dt=now,
+        )
+        # Round UP so a lecture later today still yields a 1-day plan.
+        delta_seconds = (anchor.at - now).total_seconds()
+        days = max(1, math.ceil(delta_seconds / 86400.0))
+        days = min(days, 14)
+        if anchor.kind == "next_lecture":
+            reason = (
+                f"your next lecture on {anchor.at.strftime('%a %b %-d, %-I:%M %p %Z')}"
+            )
+        elif anchor.kind == "next_deadline":
+            reason = (
+                f"your next deadline on {anchor.at.strftime('%a %b %-d, %-I:%M %p %Z')}"
+            )
+        else:
+            reason = "the next 7-day checkpoint"
+        return days, reason
+    except Exception:  # noqa: BLE001
+        logger.exception("plan_horizon_failed class_id=%s", class_id)
+        return 7, "the next checkpoint"
+
+
 @router.get("", response_model=list[ClassOut])
 def list_classes(
     user: CurrentUser = Depends(get_current_user),
@@ -121,6 +202,13 @@ def get_class_summary_endpoint(
     next_deadline = crud.get_next_deadline(db=db, user_id=user_id, class_id=class_id)
     latest_plan = crud.get_latest_study_plan(db=db, user_id=user_id, class_id=class_id)
 
+    try:
+        has_syllabus = crud.class_has_indexed_syllabus(
+            db=db, user_id=user_id, class_id=class_id
+        )
+    except ProgrammingError:
+        has_syllabus = False
+
     return ClassSummaryOut(
         clazz=ClassOut.model_validate(clazz),
         deadline_count=len(deadlines),
@@ -129,6 +217,7 @@ def get_class_summary_endpoint(
         next_deadline_due_at=(next_deadline.due_at if next_deadline else None),
         latest_study_plan_id=(latest_plan.id if latest_plan else None),
         latest_study_plan_created_at=(latest_plan.created_at if latest_plan else None),
+        has_indexed_syllabus=has_syllabus,
     )
 
 
@@ -148,6 +237,9 @@ def update_class_timeline_endpoint(
         if payload.availability is not None
         else None
     )
+    meeting_pattern = (
+        payload.meeting_pattern.model_dump() if payload.meeting_pattern else None
+    )
     updated = crud.update_class_timeline(
         db=db,
         user_id=user_id,
@@ -158,10 +250,33 @@ def update_class_timeline_endpoint(
         availability_json=(
             {"blocks": availability_json} if availability_json is not None else None
         ),
+        meeting_pattern=meeting_pattern,
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="Class not found")
     return ClassOut.model_validate(updated)
+
+
+@router.put("/{class_id}/grade-book", response_model=GradeBookState)
+def put_class_grade_book(
+    class_id: uuid.UUID,
+    payload: GradeBookState,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GradeBookState:
+    user_id = _user_uuid(user)
+    clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
+    if clazz is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+    updated = crud.update_class_grade_book(
+        db=db,
+        user_id=user_id,
+        class_id=class_id,
+        grade_book=payload.model_dump(mode="json"),
+    )
+    if updated is None or updated.grade_book is None:
+        raise HTTPException(status_code=500, detail="Failed to save grade book")
+    return GradeBookState.model_validate(updated.grade_book)
 
 
 @router.get("/{class_id}/notes", response_model=list[NotesOut])
@@ -210,10 +325,24 @@ def generate_practice(
     clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
     if clazz is None:
         raise HTTPException(status_code=404, detail="Class not found")
+    notes_list = crud.list_notes(db=db, user_id=user_id, class_id=class_id)
+    if not notes_list:
+        raise HTTPException(status_code=400, detail="No notes available for class")
+    notes_ordered = sorted(notes_list, key=lambda n: n.created_at)
+    segments: list[tuple[str, str]] = []
+    for i, n in enumerate(notes_ordered, start=1):
+        label = f"Lecture {i}"
+        text = n.notes_text
+        if len(text) > _PRACTICE_NOTE_MAX_CHARS:
+            text = (
+                text[:_PRACTICE_NOTE_MAX_CHARS]
+                + "\n\n[...truncated for question generation]"
+            )
+        segments.append((label, text))
     try:
         questions = generate_practice_questions(
             class_title=clazz.title,
-            topic=payload.topic,
+            note_segments=segments,
             count=payload.count,
             difficulty=payload.difficulty,
         )
@@ -225,6 +354,45 @@ def generate_practice(
     except PracticeGenerationError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return PracticeGenerateOut(questions=questions)
+
+
+@router.post("/{class_id}/learning-resources", response_model=LearningResourcesOut)
+def generate_learning_resources_endpoint(
+    class_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> LearningResourcesOut:
+    user_id = _user_uuid(user)
+    clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
+    if clazz is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+    notes_list = crud.list_notes(db=db, user_id=user_id, class_id=class_id)
+    if not notes_list:
+        raise HTTPException(status_code=400, detail="No notes available for class")
+    notes_ordered = sorted(notes_list, key=lambda n: n.created_at)
+    segments: list[tuple[str, str]] = []
+    for i, n in enumerate(notes_ordered, start=1):
+        label = f"Lecture {i}"
+        text = n.notes_text
+        if len(text) > _PRACTICE_NOTE_MAX_CHARS:
+            text = (
+                text[:_PRACTICE_NOTE_MAX_CHARS]
+                + "\n\n[...truncated for question generation]"
+            )
+        segments.append((label, text))
+    try:
+        items, model_name = generate_learning_resources(
+            class_title=clazz.title,
+            note_segments=segments,
+        )
+    except LearningResourcesRateLimitError as e:
+        headers = {}
+        if getattr(e, "retry_after_seconds", None):
+            headers["Retry-After"] = str(e.retry_after_seconds)
+        raise HTTPException(status_code=429, detail=str(e), headers=headers)
+    except LearningResourcesError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return LearningResourcesOut(items=items, model=model_name)
 
 
 @router.post("/{class_id}/study-plan", response_model=StudyPlanOut)
@@ -248,9 +416,16 @@ def create_study_plan_endpoint(
         if notes is None:
             raise HTTPException(status_code=400, detail="No notes available for class")
 
+    horizon_days, horizon_reason = _compute_plan_horizon(
+        db=db, user_id=user_id, class_id=class_id, clazz=clazz
+    )
+
     try:
         plan_json, model_name = generate_study_plan(
-            class_title=clazz.title, notes_text=notes.notes_text
+            class_title=clazz.title,
+            notes_text=notes.notes_text,
+            horizon_days=horizon_days,
+            horizon_reason=horizon_reason,
         )
     except StudyPlanRateLimitError as e:
         headers = {}
@@ -268,7 +443,40 @@ def create_study_plan_endpoint(
         plan_json=plan_json,
         model=model_name,
     )
-    return StudyPlanOut.model_validate(plan)
+
+    # Best-effort: book one calendar block per plan day for users who have
+    # opted into auto-scheduling. Failures here are logged but never bubbled,
+    # so a Google outage cannot break plan creation. The booked sessions are
+    # surfaced back to the client in the response so the dashboard can render
+    # "N day blocks added to your calendar" without a second request.
+    scheduled_sessions: list[dict[str, Any]] = []
+    try:
+        user_settings = crud.get_user_settings(db=db, user_id=user_id)
+        if (
+            user_settings is not None
+            and bool(user_settings.auto_schedule_sessions)
+            and crud.get_google_integration(db=db, user_id=user_id) is not None
+        ):
+            scheduled_sessions, _errors = schedule_plan_day_sessions(
+                db=db,
+                user_id=user_id,
+                class_id=class_id,
+                plan_id=plan.id,
+                plan_json=plan_json,
+                class_title=clazz.title,
+                user_timezone=(user_settings.timezone or clazz.timezone or "UTC"),
+                preferred_windows=list(user_settings.preferred_study_windows or []),
+            )
+    except Exception:
+        logger.exception(
+            "auto_schedule_plan_sessions_failed plan_id=%s class_id=%s",
+            plan.id,
+            class_id,
+        )
+
+    out = StudyPlanOut.model_validate(plan)
+    out.scheduled_plan_sessions = scheduled_sessions
+    return out
 
 
 @router.post("/{class_id}/study-plan/semester", response_model=StudyPlanOut)
@@ -397,12 +605,14 @@ async def create_deadline_endpoint(
     clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
     if clazz is None:
         raise HTTPException(status_code=404, detail="Class not found")
+    due_at = parse_user_due_to_datetime(due=payload.due, timezone=clazz.timezone)
     created = crud.create_deadline(
         db=db,
         user_id=user_id,
         class_id=class_id,
         title=payload.title,
         due_text=payload.due,
+        due_at=due_at,
     )
     await _fire_replanner_after_write(
         user=user, class_id=class_id, trigger="deadline_added"
@@ -508,9 +718,122 @@ async def import_deadlines_from_syllabus_endpoint(
         )
         created += 1
 
-    if created > 0:
-        await _fire_replanner_after_write(
-            user=user, class_id=class_id, trigger="deadline_imported"
+    return DeadlineImportOut(created=created)
+
+
+@router.post(
+    "/{class_id}/onboarding/syllabus",
+    response_model=SyllabusOnboardingOut,
+)
+async def onboarding_syllabus_bootstrap_endpoint(
+    class_id: uuid.UUID,
+    file: UploadFile = File(...),
+    chat_session_id: uuid.UUID | None = Form(default=None),
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SyllabusOnboardingOut:
+    """Single PDF read: deadlines + suggested term dates + RAG (syllabus + course summary)."""
+    user_id = _user_uuid(user)
+    clazz = crud.get_class(db=db, user_id=user_id, class_id=class_id)
+    if clazz is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    if chat_session_id is not None:
+        sess = crud.get_chat_session(db=db, user_id=user_id, session_id=chat_session_id)
+        if sess is None:
+            raise HTTPException(status_code=404, detail="Chat session not found")
+        st_row = crud.get_chat_state(db=db, user_id=user_id, session_id=chat_session_id)
+        st_json: dict[str, Any] = dict(st_row.state_json or {}) if st_row else {}
+        raw_cid = st_json.get("class_id")
+        raw_phase = st_json.get("phase")
+        if isinstance(raw_phase, int):
+            phase_num = raw_phase
+        elif isinstance(raw_phase, str) and raw_phase.strip().isdigit():
+            phase_num = int(raw_phase.strip())
+        else:
+            phase_num = 1
+        if not (
+            isinstance(raw_cid, str) and raw_cid == str(class_id) and phase_num == 2
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Syllabus onboarding is only allowed in chat phase 2 for this class.",
+            )
+
+    name = (file.filename or "").strip() or "syllabus.pdf"
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if not name.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Upload a .pdf file")
+
+    try:
+        result = run_onboarding_syllabus_bootstrap(
+            db=db,
+            user_id=user_id,
+            class_id=class_id,
+            filename=name,
+            pdf_bytes=data,
+        )
+    except DeadlineExtractRateLimitError as e:
+        headers = {}
+        if getattr(e, "retry_after_seconds", None):
+            headers["Retry-After"] = str(e.retry_after_seconds)
+        raise HTTPException(status_code=429, detail=str(e), headers=headers)
+    except DeadlineExtractError as e:
+        status_code = int(getattr(e, "status_code", 502) or 502)
+        raise HTTPException(status_code=status_code, detail=str(e))
+    except EmbeddingsError as e:
+        status_code = int(getattr(e, "status_code", 502) or 502)
+        raise HTTPException(
+            status_code=status_code,
+            detail=(
+                f"Embeddings failed: {e}. "
+                "Check GOOGLE_EMBEDDING_MODEL and GOOGLE_API_KEY."
+            ),
+        ) from e
+    except ProgrammingError as e:
+        if "does not exist" in str(e.orig) if getattr(e, "orig", None) else str(e):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "RAG tables are missing in the database. Run "
+                    "docs/db/002_rag_documents.sql, then retry."
+                ),
+            ) from e
+        raise
+
+    preview = (result.course_summary or "")[:400]
+
+    if chat_session_id is not None:
+        st_row = crud.get_chat_state(db=db, user_id=user_id, session_id=chat_session_id)
+        merged: dict[str, Any] = dict(st_row.state_json or {}) if st_row else {}
+        merged["phase"] = 3
+        merged["suggested_timezone"] = result.suggested_timezone
+        merged["suggested_semester_start"] = result.suggested_semester_start
+        merged["suggested_semester_end"] = result.suggested_semester_end
+        merged["suggested_semester_term"] = result.suggested_semester_term
+        merged["deadlines_imported_count"] = result.deadlines_created
+        if result.suggested_timezone:
+            merged["timezone"] = result.suggested_timezone
+        if result.suggested_semester_start:
+            merged["semester_start"] = result.suggested_semester_start
+        if result.suggested_semester_end:
+            merged["semester_end"] = result.suggested_semester_end
+        crud.update_chat_state(
+            db=db,
+            user_id=user_id,
+            session_id=chat_session_id,
+            state_json=merged,
         )
 
-    return DeadlineImportOut(created=created)
+    return SyllabusOnboardingOut(
+        deadlines_created=result.deadlines_created,
+        syllabus_chunks=result.syllabus_chunks,
+        course_summary_chunks=result.course_summary_chunks,
+        course_summary_preview=preview,
+        suggested_timezone=result.suggested_timezone,
+        suggested_semester_start=result.suggested_semester_start,
+        suggested_semester_end=result.suggested_semester_end,
+        suggested_semester_term=result.suggested_semester_term,
+    )

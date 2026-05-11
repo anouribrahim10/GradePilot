@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
+from zoneinfo import ZoneInfo
 
 WELCOME_MESSAGE = """Welcome to GradePilot.
 
 Let’s set up one class. Start by sending the class name, e.g.:
-`{"class_title":"CS 301 — Algorithms"}`"""
+`{"class_title":"CS 301 — Algorithms"}`
+
+Then you’ll upload your **syllabus PDF** once — we’ll pull deadlines, suggest term dates (fall/spring), and index the syllabus for Q&A."""
 
 
 def initial_state() -> dict[str, Any]:
-    # The frontend onboarding chat is a single-class wizard with numeric phases 1-5.
+    # 1 title → 2 syllabus upload → 3 timeline → 4 generating / complete.
     return {"phase": 1}
 
 
@@ -42,7 +46,6 @@ def _parse_semester_fields(message: str) -> dict[str, str]:
         k, v = part.split("=", 1)
         fields[k.strip().lower()] = v.strip()
 
-    # Accept both start/end and semester_start/semester_end
     result: dict[str, str] = {}
     if fields.get("timezone"):
         result["timezone"] = fields["timezone"]
@@ -55,6 +58,21 @@ def _parse_semester_fields(message: str) -> dict[str, str]:
     if fields.get("semester_end"):
         result["semester_end"] = fields["semester_end"]
     return result
+
+
+_RE_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _is_valid_timezone(tz: str) -> bool:
+    try:
+        ZoneInfo(tz)
+        return True
+    except Exception:
+        return False
+
+
+def _is_valid_date(d: str) -> bool:
+    return bool(_RE_DATE.match(d))
 
 
 def _phase_as_int(value: Any) -> int:
@@ -88,19 +106,17 @@ def run_onboarding_gate(
     msg_json = _parse_json_message(msg) or {}
 
     phase = _phase_as_int(st.get("phase"))
-    if phase < 1 or phase > 5:
+    # Legacy sessions may still have phase 5 from older builds.
+    if phase > 4:
+        phase = 4
+    if phase < 1:
         phase = 1
     st["phase"] = phase
 
-    # Accept semester timeline any time; store on state for later steps.
     fields = _parse_semester_fields(msg)
     timezone_val = fields.get("timezone")
     sem_start = fields.get("semester_start")
     sem_end = fields.get("semester_end")
-    if timezone_val and sem_start and sem_end:
-        st["timezone"] = timezone_val
-        st["semester_start"] = sem_start
-        st["semester_end"] = sem_end
 
     # Phase 1 — collect class title
     if phase == 1:
@@ -112,9 +128,9 @@ def run_onboarding_gate(
             st["phase"] = 2
             return (
                 f"Got it. **{title[:200]}**.\n\n"
-                "Next: send your semester timeline as either:\n"
-                "- `timezone=America/New_York; start=YYYY-MM-DD; end=YYYY-MM-DD` or\n"
-                '- JSON: `{"timezone":"...","semester_start":"...","semester_end":"..."}`',
+                "Next: upload your **syllabus PDF** using the button in Phase 2. "
+                "We’ll extract deadlines, infer fall/spring when possible, suggest term dates, "
+                "and index the syllabus for Q&A (one upload — please wait until it finishes).",
                 st,
                 tool_actions,
             )
@@ -125,9 +141,25 @@ def run_onboarding_gate(
             tool_actions,
         )
 
-    # Phase 2 — semester timeline
+    # Phase 2 — waiting for syllabus (upload handled by /onboarding/syllabus API)
     if phase == 2:
-        if timezone_val and sem_start and sem_end:
+        return (
+            "Use **Upload syllabus PDF** below. When processing completes, confirm your "
+            "semester (fall or spring) and dates in the next step.",
+            st,
+            tool_actions,
+        )
+
+    # Phase 3 — semester timeline; saving immediately generates the study plan.
+    if phase == 3:
+        if (
+            timezone_val
+            and sem_start
+            and sem_end
+            and _is_valid_timezone(timezone_val)
+            and _is_valid_date(sem_start)
+            and _is_valid_date(sem_end)
+        ):
             tool_actions.append(
                 {
                     "type": "set_class_timeline",
@@ -138,78 +170,26 @@ def run_onboarding_gate(
                     },
                 }
             )
-            st["phase"] = 3
-            return (
-                "Timeline saved.\n\n"
-                "Now upload your **syllabus PDF** to import deadlines, or add deadlines manually.",
-                st,
-                tool_actions,
-            )
-        return (
-            "Send your semester timeline:\n"
-            "`timezone=America/New_York; start=YYYY-MM-DD; end=YYYY-MM-DD`\n"
-            'or JSON: `{"timezone":"...","semester_start":"...","semester_end":"..."}`',
-            st,
-            tool_actions,
-        )
-
-    # Phase 3 — deadlines (syllabus import or manual deadlines)
-    if phase == 3:
-        # UI sends "done" when finished adding/importing deadlines.
-        if msg.lower() == "done" or msg_json.get("done") is True:
+            tool_actions.append({"type": "generate_semester_plan", "payload": {}})
+            st["timezone"] = timezone_val
+            st["semester_start"] = sem_start
+            st["semester_end"] = sem_end
             st["phase"] = 4
             return (
-                "Great. Optionally upload readings/notes/slides for Q&A.\n\n"
-                "When finished, click **Done → Generate plan**.",
+                "Timeline saved. Generating your study plan…\n\n"
+                "You can upload readings or notes later from your class page.",
                 st,
                 tool_actions,
             )
-
-        if msg_json.get("deadlines_imported") is True:
-            return (
-                "Deadlines imported.\n\n"
-                "Add more deadlines if needed, then click **Done with deadlines**.",
-                st,
-                tool_actions,
-            )
-
-        deadline = msg_json.get("deadline")
-        if isinstance(deadline, dict):
-            title = _get_str(deadline, "title")
-            due = _get_str(deadline, "due")
-            if title and due:
-                tool_actions.append(
-                    {
-                        "type": "create_deadline",
-                        "payload": {"title": title, "due_text": due},
-                    }
-                )
-                return (
-                    "Added. Add another, or click **Done with deadlines**.",
-                    st,
-                    tool_actions,
-                )
-
         return (
-            "Upload your **syllabus PDF** to import deadlines, or add one manually.\n"
-            "When finished, click **Done with deadlines**.",
+            "Choose **Fall** or **Spring** (or keep dates extracted from your syllabus), "
+            "confirm timezone and start/end dates, then click **Save & generate plan**.\n\n"
+            "You can also send JSON:\n"
+            '`{"timezone":"America/New_York","semester_start":"2026-08-01","semester_end":"2026-12-20"}`',
             st,
             tool_actions,
         )
 
-    # Phase 4 — optional materials, then generate plan
-    if phase == 4:
-        if msg.lower() == "done" or msg_json.get("done") is True:
-            tool_actions.append({"type": "generate_semester_plan", "payload": {}})
-            st["phase"] = 5
-            return ("Generating your study plan…", st, tool_actions)
-        return (
-            "Optionally upload PDFs / paste text to index for Q&A.\n"
-            "When finished, click **Done → Generate plan**.",
-            st,
-            tool_actions,
-        )
-
-    # Phase 5 — generating / complete (router will redirect)
-    st["phase"] = 5
+    # Phase 4 — generating / complete (router will redirect)
+    st["phase"] = 4
     return ("Generating your study plan…", st, tool_actions)
