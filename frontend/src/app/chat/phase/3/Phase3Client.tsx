@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { sendChatMessage } from '@/lib/backend';
-import { StudyPlanShell } from '@/components/study-plan/StudyPlanShell';
 import { OnboardingStepper } from '@/components/onboarding/OnboardingStepper';
 
 type TermChoice = 'from_syllabus' | 'fall' | 'spring';
@@ -35,6 +34,7 @@ export default function Phase3Client() {
     setSessionId(sid);
 
     const raw = sessionStorage.getItem('gp_syllabus_snapshot');
+    const y = new Date().getFullYear();
     if (raw) {
       try {
         const snap: Snapshot = JSON.parse(raw);
@@ -46,7 +46,6 @@ export default function Phase3Client() {
           setTermChoice('from_syllabus');
         } else {
           const t = snap.term?.toLowerCase();
-          const y = inferYear(snap.start ?? '', snap.end ?? '');
           if (t === 'spring') {
             setTermChoice('spring');
             setSemesterStart(`${y}-01-01`);
@@ -59,7 +58,6 @@ export default function Phase3Client() {
         }
       } catch { /* ignore */ }
     } else {
-      const y = new Date().getFullYear();
       setSemesterStart(`${y}-08-01`);
       setSemesterEnd(`${y}-12-20`);
     }
@@ -75,7 +73,7 @@ export default function Phase3Client() {
     } else if (choice === 'fall') {
       setSemesterStart(`${y}-08-01`);
       setSemesterEnd(`${y}-12-20`);
-    } else if (choice === 'spring') {
+    } else {
       setSemesterStart(`${y}-01-01`);
       setSemesterEnd(`${y}-06-30`);
     }
@@ -101,83 +99,90 @@ export default function Phase3Client() {
   const hasSyllabusDate = Boolean(snapshot?.start && snapshot?.end);
 
   return (
-    <StudyPlanShell title="New Class Setup" subtitle="Step through setup to get your personalised study plan.">
-      <OnboardingStepper phase={3} />
+    <div className="min-h-screen w-full bg-[#0A0B10] text-[#F8FAFC] flex flex-col items-center justify-center px-4">
+      <div className="w-full max-w-xl">
+        <OnboardingStepper phase={3} />
 
-      {error ? (
-        <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100 mb-4">
-          {error}
-        </div>
-      ) : null}
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 space-y-6">
+          <div className="text-center space-y-2">
+            <h1 className="text-2xl font-semibold text-white">Set your semester timeline</h1>
+            <p className="text-slate-400">
+              {hasSyllabusDate
+                ? 'We inferred dates from your syllabus — confirm or adjust below.'
+                : 'Choose a term or enter custom dates.'}
+            </p>
+          </div>
 
-      <div className="max-w-lg space-y-5">
-        <div>
-          <h2 className="text-base font-semibold text-white">Set your semester timeline</h2>
-          <p className="text-sm text-slate-400 mt-1">
-            {hasSyllabusDate
-              ? 'We inferred dates from your syllabus — confirm or adjust below.'
-              : 'Choose a term or enter custom dates.'}
-          </p>
-        </div>
+          {error ? (
+            <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              {error}
+            </div>
+          ) : null}
 
-        <div className="space-y-2 rounded-xl border border-white/10 bg-black/20 p-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Term</div>
-          <label className="flex items-center gap-2 text-sm text-slate-200 cursor-pointer">
+          <div className="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Term</div>
+            {[
+              {
+                value: 'from_syllabus' as TermChoice,
+                label: 'Use dates from syllabus',
+                disabled: !hasSyllabusDate,
+                hint: hasSyllabusDate ? `${snapshot!.start} → ${snapshot!.end}` : 'not available',
+              },
+              { value: 'fall' as TermChoice, label: 'Fall', hint: 'Aug 1 → Dec 20', disabled: false },
+              { value: 'spring' as TermChoice, label: 'Spring', hint: 'Jan 1 → Jun 30', disabled: false },
+            ].map((opt) => (
+              <label key={opt.value} className={['flex items-center gap-3 cursor-pointer', opt.disabled ? 'opacity-40' : ''].join(' ')}>
+                <input
+                  type="radio" name="term"
+                  checked={termChoice === opt.value}
+                  disabled={opt.disabled}
+                  onChange={() => applyTerm(opt.value)}
+                  className="accent-white"
+                />
+                <span className="text-sm text-slate-200">{opt.label}</span>
+                <span className="text-xs text-slate-500">{opt.hint}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
             <input
-              type="radio" name="term"
-              checked={termChoice === 'from_syllabus'}
-              disabled={!hasSyllabusDate}
-              onChange={() => applyTerm('from_syllabus')}
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              placeholder="Timezone (e.g. America/New_York)"
+              className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-base text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-white/20"
             />
-            Use dates from syllabus
-            {hasSyllabusDate
-              ? <span className="text-xs text-slate-500">({snapshot!.start} → {snapshot!.end})</span>
-              : <span className="text-xs text-slate-500">(not available)</span>}
-          </label>
-          <label className="flex items-center gap-2 text-sm text-slate-200 cursor-pointer">
-            <input type="radio" name="term" checked={termChoice === 'fall'} onChange={() => applyTerm('fall')} />
-            Fall — default Aug 1 → Dec 20
-          </label>
-          <label className="flex items-center gap-2 text-sm text-slate-200 cursor-pointer">
-            <input type="radio" name="term" checked={termChoice === 'spring'} onChange={() => applyTerm('spring')} />
-            Spring — default Jan 1 → Jun 30
-          </label>
-        </div>
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                value={semesterStart}
+                onChange={(e) => setSemesterStart(e.target.value)}
+                placeholder="Start (YYYY-MM-DD)"
+                className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-base text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-white/20"
+              />
+              <input
+                value={semesterEnd}
+                onChange={(e) => setSemesterEnd(e.target.value)}
+                placeholder="End (YYYY-MM-DD)"
+                className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-base text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-white/20"
+              />
+            </div>
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <input
-            value={timezone}
-            onChange={(e) => setTimezone(e.target.value)}
-            placeholder="Timezone (e.g. America/New_York)"
-            className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-white/20"
-          />
-          <input
-            value={semesterStart}
-            onChange={(e) => setSemesterStart(e.target.value)}
-            placeholder="Start (YYYY-MM-DD)"
-            className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-white/20"
-          />
-          <input
-            value={semesterEnd}
-            onChange={(e) => setSemesterEnd(e.target.value)}
-            placeholder="End (YYYY-MM-DD)"
-            className="bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-white/20"
-          />
-        </div>
-
-        <div className="flex justify-between items-center">
-          <button onClick={() => router.back()} className="text-sm text-slate-400 hover:text-white">
-            ← Back
-          </button>
           <button
             disabled={loading || !timezone.trim() || !semesterStart.trim() || !semesterEnd.trim()}
             onClick={() => void handleSave()}
-            className="rounded-xl bg-white text-black px-6 py-2 text-sm font-semibold disabled:opacity-60"
+            className="w-full rounded-xl bg-white text-black py-3 text-base font-semibold disabled:opacity-50 hover:bg-slate-100 transition-colors"
           >
             {loading ? 'Saving…' : 'Save & generate plan →'}
           </button>
+
+          <div className="flex justify-start">
+            <button onClick={() => router.back()} className="text-sm text-slate-400 hover:text-white transition-colors">
+              ← Back
+            </button>
+          </div>
         </div>
       </div>
-    </StudyPlanShell>
+    </div>
   );
 }

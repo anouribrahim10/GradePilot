@@ -9,13 +9,13 @@ const STEPS = [
 
 export function OnboardingStepper({ phase }: { phase: number }) {
   return (
-    <div className="flex items-center gap-0 mb-8">
+    <div className="flex items-center justify-center gap-0 mb-10">
       {STEPS.map((s, i) => (
         <div key={s.n} className="flex items-center">
-          <div className="flex flex-col items-center gap-1">
+          <div className="flex flex-col items-center gap-2">
             <div
               className={[
-                'w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold border',
+                'w-11 h-11 rounded-full flex items-center justify-center text-base font-semibold border-2',
                 s.n < phase
                   ? 'bg-white text-black border-white'
                   : s.n === phase
@@ -25,12 +25,12 @@ export function OnboardingStepper({ phase }: { phase: number }) {
             >
               {s.n < phase ? '✓' : s.n}
             </div>
-            <span className={['text-xs', s.n === phase ? 'text-white' : 'text-slate-500'].join(' ')}>
+            <span className={['text-sm font-medium', s.n === phase ? 'text-white' : 'text-slate-500'].join(' ')}>
               {s.label}
             </span>
           </div>
           {i < STEPS.length - 1 ? (
-            <div className={['h-px w-12 mx-1 mb-5', s.n < phase ? 'bg-white/60' : 'bg-white/15'].join(' ')} />
+            <div className={['h-px w-16 mx-2 mb-6', s.n < phase ? 'bg-white/60' : 'bg-white/15'].join(' ')} />
           ) : null}
         </div>
       ))}

@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createOrGetChatSession, sendChatMessage } from '@/lib/backend';
-import { StudyPlanShell } from '@/components/study-plan/StudyPlanShell';
 import { OnboardingStepper } from '@/components/onboarding/OnboardingStepper';
 
 export default function Phase1Client() {
@@ -28,38 +27,40 @@ export default function Phase1Client() {
   }
 
   return (
-    <StudyPlanShell title="New Class Setup" subtitle="Step through setup to get your personalised study plan.">
-      <OnboardingStepper phase={1} />
+    <div className="min-h-screen w-full bg-[#0A0B10] text-[#F8FAFC] flex flex-col items-center justify-center px-4">
+      <div className="w-full max-w-xl">
+        <OnboardingStepper phase={1} />
 
-      {error ? (
-        <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100 mb-4">
-          {error}
-        </div>
-      ) : null}
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 space-y-6">
+          <div className="text-center space-y-2">
+            <h1 className="text-2xl font-semibold text-white">What class are you setting up?</h1>
+            <p className="text-slate-400">Enter the course name or code to get started.</p>
+          </div>
 
-      <div className="max-w-lg space-y-4">
-        <div>
-          <h2 className="text-base font-semibold text-white">What class are you setting up?</h2>
-          <p className="text-sm text-slate-400 mt-1">Enter the course name or code.</p>
-        </div>
-        <input
-          value={classTitle}
-          onChange={(e) => setClassTitle(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') void handleCreate(); }}
-          placeholder='e.g. "CS 301 — Algorithms"'
-          className="w-full bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-white/20"
-          autoFocus
-        />
-        <div className="flex justify-end">
+          {error ? (
+            <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              {error}
+            </div>
+          ) : null}
+
+          <input
+            value={classTitle}
+            onChange={(e) => setClassTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void handleCreate(); }}
+            placeholder='e.g. "CS 301 — Algorithms"'
+            className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-base text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-white/20"
+            autoFocus
+          />
+
           <button
             disabled={loading || classTitle.trim().length === 0}
             onClick={() => void handleCreate()}
-            className="rounded-xl bg-white text-black px-6 py-2 text-sm font-semibold disabled:opacity-60"
+            className="w-full rounded-xl bg-white text-black py-3 text-base font-semibold disabled:opacity-50 hover:bg-slate-100 transition-colors"
           >
             {loading ? 'Creating…' : 'Continue →'}
           </button>
         </div>
       </div>
-    </StudyPlanShell>
+    </div>
   );
 }

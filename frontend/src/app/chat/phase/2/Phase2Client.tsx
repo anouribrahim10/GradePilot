@@ -2,12 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  getChatSession,
-  uploadOnboardingSyllabus,
-  type SyllabusOnboardingOut,
-} from '@/lib/backend';
-import { StudyPlanShell } from '@/components/study-plan/StudyPlanShell';
+import { getChatSession, uploadOnboardingSyllabus, type SyllabusOnboardingOut } from '@/lib/backend';
 import { OnboardingStepper } from '@/components/onboarding/OnboardingStepper';
 
 export default function Phase2Client() {
@@ -40,79 +35,79 @@ export default function Phase2Client() {
     }));
   }
 
-  async function handleSkip() {
-    router.push('/chat/phase/3');
-  }
-
   return (
-    <StudyPlanShell title="New Class Setup" subtitle="Step through setup to get your personalised study plan.">
-      <OnboardingStepper phase={2} />
+    <div className="min-h-screen w-full bg-[#0A0B10] text-[#F8FAFC] flex flex-col items-center justify-center px-4">
+      <div className="w-full max-w-xl">
+        <OnboardingStepper phase={2} />
 
-      {error ? (
-        <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100 mb-4">
-          {error}
-        </div>
-      ) : null}
-
-      <div className="max-w-lg space-y-4">
-        <div>
-          <h2 className="text-base font-semibold text-white">Upload your syllabus</h2>
-          <p className="text-sm text-slate-400 mt-1">
-            We'll extract deadlines, infer semester dates, and index it for Q&A.
-            This takes about a minute — stay on this page until it finishes.
-          </p>
-        </div>
-
-        {busy ? (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-            {busy}
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 space-y-6">
+          <div className="text-center space-y-2">
+            <h1 className="text-2xl font-semibold text-white">Upload your syllabus</h1>
+            <p className="text-slate-400">
+              We'll extract deadlines, infer semester dates, and index it for Q&A.
+              This takes about a minute — stay on this page until it finishes.
+            </p>
           </div>
-        ) : null}
 
-        <label className={[
-          'block rounded-xl border border-white/15 bg-white/[0.03] px-4 py-3 text-sm text-slate-300 hover:text-white cursor-pointer text-center',
-          (!classId || !sessionId || busy !== null) ? 'opacity-50 pointer-events-none' : '',
-        ].join(' ')}>
-          <input
-            type="file"
-            accept=".pdf,application/pdf"
-            className="hidden"
-            disabled={!classId || !sessionId || busy !== null}
-            onChange={async (e) => {
-              const f = e.target.files?.[0];
-              e.target.value = '';
-              if (!f || !classId || !sessionId) return;
-              setError(null);
-              setBusy('Processing syllabus: extracting text, running AI, building search index…');
-              try {
-                const out = await uploadOnboardingSyllabus(classId, f, sessionId);
-                storeSnapshot(out);
-                router.push('/chat/phase/3');
-              } catch (err: unknown) {
-                setError(err instanceof Error ? err.message : 'Syllabus processing failed');
-                setBusy(null);
-              }
-            }}
-          />
-          {busy ? 'Processing…' : '📄 Upload syllabus PDF'}
-        </label>
+          {error ? (
+            <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              {error}
+            </div>
+          ) : null}
 
-        <div className="flex justify-between items-center pt-2">
-          <button
-            onClick={() => router.back()}
-            className="text-sm text-slate-400 hover:text-white"
-          >
-            ← Back
-          </button>
-          <button
-            disabled={busy !== null}
-            onClick={handleSkip}
-            className="text-sm text-slate-400 hover:text-white disabled:opacity-50"
-          >
-            Skip for now →
-          </button>
+          {busy ? (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 flex items-center gap-3">
+              <div className="w-4 h-4 rounded-full border-2 border-amber-300/40 border-t-amber-300 animate-spin shrink-0" />
+              {busy}
+            </div>
+          ) : null}
+
+          <label className={[
+            'flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-white/20 bg-black/20 px-6 py-10 text-center cursor-pointer hover:border-white/40 hover:bg-black/30 transition-colors',
+            (!classId || !sessionId || busy !== null) ? 'opacity-50 pointer-events-none' : '',
+          ].join(' ')}>
+            <span className="text-4xl">📄</span>
+            <span className="text-base font-medium text-white">
+              {busy ? 'Processing…' : 'Click to upload syllabus PDF'}
+            </span>
+            <span className="text-sm text-slate-400">PDF files only</span>
+            <input
+              type="file"
+              accept=".pdf,application/pdf"
+              className="hidden"
+              disabled={!classId || !sessionId || busy !== null}
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (!f || !classId || !sessionId) return;
+                setError(null);
+                setBusy('Processing syllabus: extracting text, running AI, building search index…');
+                try {
+                  const out = await uploadOnboardingSyllabus(classId, f, sessionId);
+                  storeSnapshot(out);
+                  router.push('/chat/phase/3');
+                } catch (err: unknown) {
+                  setError(err instanceof Error ? err.message : 'Syllabus processing failed');
+                  setBusy(null);
+                }
+              }}
+            />
+          </label>
+
+          <div className="flex justify-between items-center pt-2">
+            <button onClick={() => router.back()} className="text-sm text-slate-400 hover:text-white transition-colors">
+              ← Back
+            </button>
+            <button
+              disabled={busy !== null}
+              onClick={() => router.push('/chat/phase/3')}
+              className="text-sm text-slate-400 hover:text-white disabled:opacity-50 transition-colors"
+            >
+              Skip for now →
+            </button>
+          </div>
         </div>
       </div>
-    </StudyPlanShell>
+    </div>
   );
 }
