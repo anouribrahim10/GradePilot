@@ -1,6 +1,6 @@
 require("@testing-library/jest-dom");
 
-jest.mock('../src/lib/supabase/client', () => ({
+jest.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
     auth: {
       getSession: () => Promise.resolve({ data: { session: null } }),
