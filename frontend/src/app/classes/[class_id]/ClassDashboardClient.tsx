@@ -92,7 +92,6 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
   const classTitle = summary?.clazz?.title ?? 'Class';
 
   useEffect(() => {
-    const controller = new AbortController();
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -112,7 +111,7 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
           setPlan(null);
         }
       } catch (e: unknown) {
-        if (!cancelled && !controller.signal.aborted)
+        if (!cancelled)
           setError(e instanceof Error ? e.message : 'Failed to load class');
       } finally {
         if (!cancelled) setLoading(false);
@@ -120,7 +119,6 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
     })();
     return () => {
       cancelled = true;
-      controller.abort();
     };
   }, [classId]);
 

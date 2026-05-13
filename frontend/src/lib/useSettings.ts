@@ -40,9 +40,6 @@ export function useSettings() {
         return { ...s, daysBeforeDeadline: v };
       }),
     setGoogleConnected: (v: boolean) =>
-      setSettings((s) => {
-        void updateUserSettings({ notificationsEnabled: s.notificationsEnabled });
-        return { ...s, googleConnected: v };
-      }),
+      setSettings((s) => ({ ...s, googleConnected: v })),
   };
 }

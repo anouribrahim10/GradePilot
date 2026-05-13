@@ -241,7 +241,7 @@ def post_message(
                     model=model_name,
                 )
                 state_json["latest_study_plan_id"] = str(plan.id)
-                state_json["completed_at"] = datetime.utcnow().isoformat()
+                state_json["completed_at"] = datetime.now(timezone.utc).isoformat()
 
         elif a_type == "complete":
             state_json["complete"] = True
