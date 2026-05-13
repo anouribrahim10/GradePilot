@@ -25,7 +25,6 @@ def client() -> Generator[TestClient, None, None]:
     )
     Base.metadata.create_all(bind=engine)
     SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-
     user_id = uuid.uuid4()
 
     def _override_get_db() -> Generator[Session, None, None]:
@@ -71,6 +70,7 @@ def test_classes_create_list_and_summary(client: TestClient) -> None:
     payload = r.json()
     assert payload["clazz"]["id"] == class_id
     assert payload["deadline_count"] == 0
+    assert payload.get("has_indexed_syllabus") is False
 
 
 def test_chat_session_create_get_and_post_message_creates_classes(
@@ -84,10 +84,10 @@ def test_chat_session_create_get_and_post_message_creates_classes(
     assert r.status_code == 200
     assert r.json()["session"]["id"] == session_id
 
-    # Deterministic onboarding: comma-separated titles -> tool action create_classes
+    # Onboarding wizard: JSON class title -> tool action create_class
     r = client.post(
         f"/chat/sessions/{session_id}/messages",
-        json={"content": "CS101, Calculus II"},
+        json={"content": '{"class_title":"CS101"}'},
     )
     assert r.status_code == 200
     body = r.json()
@@ -95,8 +95,7 @@ def test_chat_session_create_get_and_post_message_creates_classes(
     assert any(m["role"] == "user" for m in body["messages"])
     assert any(m["role"] == "assistant" for m in body["messages"])
 
-    # The tool action list should include create_classes
-    assert any(a["type"] == "create_classes" for a in body["tool_actions"])
+    assert any(a["type"] == "create_class" for a in body["tool_actions"])
 
 
 def test_chat_post_message_executes_tool_actions_happy_path(
@@ -304,10 +303,61 @@ def test_classes_notes_deadlines_and_plans_endpoints(
 
     r = client.post(
         f"/classes/{class_id}/practice",
-        json={"topic": "SQL", "count": 1, "difficulty": "Easy"},
+        json={"count": 1, "difficulty": "Easy"},
     )
     assert r.status_code == 200
     assert len(r.json()["questions"]) == 1
+
+    from app.schemas import LearningResourceItem
+
+    def _fake_generate_learning_resources(
+        *args: Any, **kwargs: Any
+    ) -> tuple[list[LearningResourceItem], str]:
+        items = [
+            LearningResourceItem(
+                title="SQL joins",
+                rationale="Matches your notes on relational algebra.",
+                destination="youtube",
+                search_query="sql joins explained",
+            ),
+            LearningResourceItem(
+                title="PostgreSQL docs",
+                rationale="Official reference for query syntax.",
+                destination="web",
+                search_query="postgresql SELECT documentation",
+            ),
+            LearningResourceItem(
+                title="Normalization",
+                rationale="Core database design topic.",
+                destination="youtube",
+                search_query="database normalization 3NF",
+            ),
+            LearningResourceItem(
+                title="Indexes",
+                rationale="Performance and query plans.",
+                destination="web",
+                search_query="database index B-tree explained",
+            ),
+            LearningResourceItem(
+                title="Transactions",
+                rationale="ACID properties from your course.",
+                destination="youtube",
+                search_query="ACID database transactions",
+            ),
+        ]
+        return items, "fake-model"
+
+    monkeypatch.setattr(
+        classes_router,
+        "generate_learning_resources",
+        _fake_generate_learning_resources,
+    )
+
+    r = client.post(f"/classes/{class_id}/learning-resources")
+    assert r.status_code == 200
+    lr = r.json()
+    assert lr["model"] == "fake-model"
+    assert len(lr["items"]) == 5
 
     # Mock study plan generation
     def _fake_generate_study_plan(
@@ -437,7 +487,8 @@ def test_summarise_and_google_routes_smoke(
 
     r = client.post(
         f"/classes/{class_id}/deadlines",
-        json={"title": "HW", "due": "tomorrow"},
+        # Sync skips deadlines without due_at; only ISO / YYYY-MM-DD are parsed.
+        json={"title": "HW", "due": "2026-05-10"},
     )
     assert r.status_code == 200
 

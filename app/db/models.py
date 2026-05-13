@@ -39,6 +39,20 @@ class Class(Base):
         JSONB().with_variant(JSON(), "sqlite"),
         nullable=True,
     )
+    # Recurring lecture/meeting pattern in the class timezone. Shape:
+    #   {"weekdays": [0, 2], "start_time": "14:00", "end_time": "15:30"}
+    # weekdays: list[int] where 0=Monday ... 6=Sunday.
+    meeting_pattern: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=True,
+        default=None,
+    )
+    # Weighted grade components, pass/target lines, optional letter cutoffs (syllabus-driven).
+    grade_book: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=True,
+        default=None,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -97,6 +111,46 @@ class StudyPlan(Base):
     )
 
     clazz: Mapped[Class] = relationship(back_populates="study_plans")
+
+
+class StudyPlanJob(Base):
+    __tablename__ = "study_plan_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), index=True, nullable=False
+    )
+    class_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("classes.id", ondelete="CASCADE"), index=True
+    )
+    notes_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("class_notes.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
+    phase: Mapped[str] = mapped_column(String(40), nullable=False, default="queued")
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    result_plan_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("study_plans.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class Deadline(Base):
@@ -346,6 +400,16 @@ class UserSettings(Base):
         Integer, nullable=False, default=3
     )
     timezone: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # Preferred study windows in user local time. Shape:
+    #   [{"start": "07:00", "end": "10:00"}, ...]
+    preferred_study_windows: Mapped[list[dict[str, str]]] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        default=list,
+    )
+    auto_schedule_sessions: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -18,6 +18,7 @@ from app.db.models import (
     DocumentChunk,
     GoogleIntegration,
     StudyPlan,
+    StudyPlanJob,
     UserSettings,
 )
 
@@ -53,6 +54,7 @@ def update_class_timeline(
     semester_end: str | None = None,
     timezone: str | None = None,
     availability_json: dict[str, Any] | None = None,
+    meeting_pattern: dict[str, Any] | None = None,
 ) -> Class | None:
     clazz = get_class(db=db, user_id=user_id, class_id=class_id)
     if clazz is None:
@@ -65,6 +67,25 @@ def update_class_timeline(
         clazz.timezone = timezone
     if availability_json is not None:
         clazz.availability_json = availability_json
+    if meeting_pattern is not None:
+        clazz.meeting_pattern = meeting_pattern
+    db.add(clazz)
+    db.commit()
+    db.refresh(clazz)
+    return clazz
+
+
+def update_class_grade_book(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    class_id: uuid.UUID,
+    grade_book: dict[str, Any],
+) -> Class | None:
+    clazz = get_class(db=db, user_id=user_id, class_id=class_id)
+    if clazz is None:
+        return None
+    clazz.grade_book = grade_book
     db.add(clazz)
     db.commit()
     db.refresh(clazz)
@@ -129,6 +150,33 @@ def create_study_plan(
         plan_json=plan_json,
         model=model,
     )
+    db.add(plan)
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
+def update_study_plan_progress(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    class_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    completed_tasks: list[str],
+) -> StudyPlan | None:
+    stmt = select(StudyPlan).where(
+        StudyPlan.id == plan_id,
+        StudyPlan.class_id == class_id,
+        StudyPlan.user_id == user_id,
+    )
+    plan = db.execute(stmt).scalar_one_or_none()
+    if plan is None:
+        return None
+
+    new_plan_json = dict(plan.plan_json)
+    new_plan_json["completed_tasks"] = completed_tasks
+    plan.plan_json = new_plan_json
+
     db.add(plan)
     db.commit()
     db.refresh(plan)
@@ -213,6 +261,75 @@ def get_latest_study_plan(
     return db.execute(stmt).scalar_one_or_none()
 
 
+def create_study_plan_job(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    class_id: uuid.UUID,
+    notes_id: uuid.UUID | None,
+) -> StudyPlanJob:
+    job = StudyPlanJob(
+        user_id=user_id,
+        class_id=class_id,
+        notes_id=notes_id,
+        status="queued",
+        phase="queued",
+        progress=0,
+        message=None,
+        error=None,
+        result_plan_id=None,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def get_study_plan_job(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    job_id: uuid.UUID,
+) -> StudyPlanJob | None:
+    stmt = select(StudyPlanJob).where(
+        StudyPlanJob.id == job_id, StudyPlanJob.user_id == user_id
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def update_study_plan_job(
+    *,
+    db: Session,
+    user_id: uuid.UUID,
+    job_id: uuid.UUID,
+    status: str | None = None,
+    phase: str | None = None,
+    progress: int | None = None,
+    message: str | None = None,
+    error: str | None = None,
+    result_plan_id: uuid.UUID | None = None,
+) -> StudyPlanJob | None:
+    job = get_study_plan_job(db=db, user_id=user_id, job_id=job_id)
+    if job is None:
+        return None
+    if status is not None:
+        job.status = status
+    if phase is not None:
+        job.phase = phase
+    if progress is not None:
+        job.progress = max(0, min(100, int(progress)))
+    if message is not None:
+        job.message = message
+    if error is not None:
+        job.error = error
+    if result_plan_id is not None:
+        job.result_plan_id = result_plan_id
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
 def get_next_deadline(
     *, db: Session, user_id: uuid.UUID, class_id: uuid.UUID
 ) -> Deadline | None:
@@ -255,6 +372,21 @@ def delete_deadline(
     db.delete(deadline)
     db.commit()
     return True
+
+
+def class_has_indexed_syllabus(
+    *, db: Session, user_id: uuid.UUID, class_id: uuid.UUID
+) -> bool:
+    stmt = (
+        select(Document.id)
+        .where(
+            Document.user_id == user_id,
+            Document.class_id == class_id,
+            Document.document_type == "syllabus",
+        )
+        .limit(1)
+    )
+    return db.execute(stmt).scalar_one_or_none() is not None
 
 
 def create_document(
@@ -301,6 +433,25 @@ def get_active_chat_session(*, db: Session, user_id: uuid.UUID) -> ChatSession |
         .limit(1)
     )
     return db.execute(stmt).scalar_one_or_none()
+
+
+def archive_active_chat_sessions(*, db: Session, user_id: uuid.UUID) -> int:
+    """
+    Mark all active chat sessions for this user as archived.
+
+    Returns the number of sessions updated.
+    """
+    stmt = select(ChatSession).where(
+        ChatSession.user_id == user_id, ChatSession.status == "active"
+    )
+    sessions = list(db.execute(stmt).scalars().all())
+    if not sessions:
+        return 0
+    for s in sessions:
+        s.status = "archived"
+        db.add(s)
+    db.commit()
+    return len(sessions)
 
 
 def create_chat_session(*, db: Session, user_id: uuid.UUID) -> ChatSession:
@@ -490,6 +641,8 @@ def upsert_user_settings(
     notifications_enabled: bool | None = None,
     days_before_deadline: int | None = None,
     timezone: str | None = None,
+    preferred_study_windows: list[dict[str, str]] | None = None,
+    auto_schedule_sessions: bool | None = None,
 ) -> UserSettings:
     existing = get_user_settings(db=db, user_id=user_id)
     if existing is None:
@@ -502,6 +655,12 @@ def upsert_user_settings(
                 days_before_deadline if days_before_deadline is not None else 3
             ),
             timezone=timezone,
+            preferred_study_windows=(
+                preferred_study_windows if preferred_study_windows is not None else []
+            ),
+            auto_schedule_sessions=(
+                auto_schedule_sessions if auto_schedule_sessions is not None else False
+            ),
         )
         db.add(existing)
         db.commit()
@@ -514,6 +673,10 @@ def upsert_user_settings(
         existing.days_before_deadline = days_before_deadline
     if timezone is not None:
         existing.timezone = timezone
+    if preferred_study_windows is not None:
+        existing.preferred_study_windows = preferred_study_windows
+    if auto_schedule_sessions is not None:
+        existing.auto_schedule_sessions = auto_schedule_sessions
     db.add(existing)
     db.commit()
     db.refresh(existing)

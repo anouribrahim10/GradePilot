@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import crud
@@ -18,6 +18,7 @@ from app.schemas import (
     ChatToolAction,
 )
 from app.services.chat.onboarding import run_onboarding_step
+from app.services.datetime_parse import parse_user_due_to_datetime
 from app.services.study_plan_semester import (
     SemesterStudyPlanGenerationError,
     SemesterStudyPlanRateLimitError,
@@ -36,10 +37,18 @@ def _user_uuid(user: CurrentUser) -> uuid.UUID:
 
 @router.post("/sessions", response_model=ChatSessionOut)
 def create_or_get_session(
+    force_new: bool = Query(
+        False, description="If true, always start a new onboarding session."
+    ),
     user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ChatSessionOut:
     user_id = _user_uuid(user)
+    if force_new:
+        crud.archive_active_chat_sessions(db=db, user_id=user_id)
+        created = crud.create_chat_session(db=db, user_id=user_id)
+        return ChatSessionOut.model_validate(created)
+
     existing = crud.get_active_chat_session(db=db, user_id=user_id)
     if existing is not None:
         return ChatSessionOut.model_validate(existing)
@@ -104,25 +113,7 @@ def post_message(
             payload_raw if isinstance(payload_raw, dict) else {}
         )
 
-        if a_type == "create_classes":
-            titles_raw = payload_obj.get("titles")
-            titles: list[str] = []
-            if isinstance(titles_raw, list):
-                for t in titles_raw:
-                    if isinstance(t, str) and t.strip():
-                        titles.append(t.strip())
-
-            created_ids: list[str] = []
-            for class_title in titles:
-                created = crud.create_class(
-                    db=db, user_id=user_id, title=class_title.strip()[:200]
-                )
-                created_ids.append(str(created.id))
-
-            if created_ids:
-                state_json["class_ids"] = created_ids
-
-        elif a_type == "create_class":
+        if a_type == "create_class":
             title_raw = payload_obj.get("title")
             if isinstance(title_raw, str) and title_raw.strip():
                 created = crud.create_class(
@@ -176,12 +167,19 @@ def post_message(
                 title_raw = payload_obj.get("title")
                 due_text = payload_obj.get("due_text")
                 if isinstance(title_raw, str) and isinstance(due_text, str):
+                    tz = (
+                        state_json.get("timezone")
+                        if isinstance(state_json.get("timezone"), str)
+                        else None
+                    )
+                    due_at = parse_user_due_to_datetime(due=due_text, timezone=tz)
                     crud.create_deadline(
                         db=db,
                         user_id=user_id,
                         class_id=class_id,
                         title=title_raw,
                         due_text=due_text,
+                        due_at=due_at,
                     )
 
         elif a_type == "generate_semester_plan":
@@ -267,7 +265,7 @@ def post_message(
             out_class_id = uuid.UUID(raw_class_id)
         except ValueError:
             out_class_id = None
-    complete = bool(state_json.get("complete")) or str(state_json.get("phase")) == "5"
+    complete = bool(state_json.get("complete")) or str(state_json.get("phase")) == "4"
 
     return ChatReplyOut(
         session=ChatSessionOut.model_validate(sess),

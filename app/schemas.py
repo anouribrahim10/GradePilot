@@ -1,14 +1,98 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+_HHMM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def _hhmm_to_minutes(value: str) -> int:
+    hh, mm = value.split(":")
+    return int(hh) * 60 + int(mm)
+
+
+class ClassMeetingPattern(BaseModel):
+    """Recurring lecture pattern in the class timezone.
+
+    weekdays uses Python's Monday=0 ... Sunday=6 convention so it lines up with
+    `datetime.weekday()`.
+    """
+
+    weekdays: list[int] = Field(min_length=1, max_length=7)
+    start_time: str = Field(min_length=5, max_length=5)
+    end_time: str = Field(min_length=5, max_length=5)
+
+    @field_validator("weekdays")
+    @classmethod
+    def _check_weekdays(cls, v: list[int]) -> list[int]:
+        for day in v:
+            if not 0 <= day <= 6:
+                raise ValueError("weekdays must be integers in [0, 6]")
+        if len(set(v)) != len(v):
+            raise ValueError("weekdays must not contain duplicates")
+        return sorted(v)
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def _check_hhmm(cls, v: str) -> str:
+        if not _HHMM_RE.match(v):
+            raise ValueError("time must be HH:MM in 24h format")
+        return v
+
+    @model_validator(mode="after")
+    def _check_order(self) -> "ClassMeetingPattern":
+        if _hhmm_to_minutes(self.start_time) >= _hhmm_to_minutes(self.end_time):
+            raise ValueError("start_time must be earlier than end_time")
+        return self
 
 
 class ClassCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
+
+
+class GradeBookComponent(BaseModel):
+    """One syllabus category (exam, homework bucket, final, …) with optional score."""
+
+    id: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=120)
+    weight_percent: float = Field(ge=0, le=100)
+    score_percent: float | None = Field(default=None, ge=0, le=100)
+
+
+class LetterGradeCutoff(BaseModel):
+    letter: str = Field(min_length=1, max_length=4)
+    min_percent: float = Field(ge=0, le=100)
+
+
+class GradeBookState(BaseModel):
+    """Weighted grade setup from the syllabus plus scores the student enters."""
+
+    components: list[GradeBookComponent] = Field(default_factory=list, max_length=40)
+    pass_percent: float = Field(default=60.0, ge=0, le=100)
+    target_percent: float = Field(default=73.0, ge=0, le=100)
+    letter_cutoffs: list[LetterGradeCutoff] = Field(
+        default_factory=lambda: [
+            LetterGradeCutoff(letter="A", min_percent=90),
+            LetterGradeCutoff(letter="B", min_percent=80),
+            LetterGradeCutoff(letter="C", min_percent=70),
+            LetterGradeCutoff(letter="D", min_percent=60),
+        ]
+    )
+
+    @model_validator(mode="after")
+    def _weights_and_cutoffs(self) -> "GradeBookState":
+        if self.components:
+            total_w = sum(c.weight_percent for c in self.components)
+            if abs(total_w - 100.0) > 0.02:
+                raise ValueError("Component weights must sum to 100%")
+        letters = [c.letter.upper() for c in self.letter_cutoffs]
+        if len(letters) != len(set(letters)):
+            raise ValueError("letter_cutoffs must not duplicate letters")
+        return self
 
 
 class ClassOut(BaseModel):
@@ -21,7 +105,18 @@ class ClassOut(BaseModel):
     semester_end: str | None = None
     timezone: str | None = None
     availability_json: dict[str, Any] | None = None
+    meeting_pattern: ClassMeetingPattern | None = None
+    grade_book: GradeBookState | None = None
     created_at: datetime
+
+    @field_validator("grade_book", mode="before")
+    @classmethod
+    def _coerce_grade_book(cls, v: Any) -> Any:
+        if v is None or isinstance(v, GradeBookState):
+            return v
+        if isinstance(v, dict):
+            return GradeBookState.model_validate(v)
+        return v
 
 
 class ClassTimelineUpdate(BaseModel):
@@ -29,6 +124,7 @@ class ClassTimelineUpdate(BaseModel):
     semester_end: str | None = Field(default=None, max_length=40)
     timezone: str | None = Field(default=None, max_length=60)
     availability: list["StudyAvailabilityBlock"] | None = None
+    meeting_pattern: ClassMeetingPattern | None = None
 
 
 class ClassSummaryOut(BaseModel):
@@ -39,6 +135,8 @@ class ClassSummaryOut(BaseModel):
     next_deadline_due_at: datetime | None = None
     latest_study_plan_id: uuid.UUID | None = None
     latest_study_plan_created_at: datetime | None = None
+    # True when at least one RAG document was indexed with document_type "syllabus".
+    has_indexed_syllabus: bool = False
 
 
 class NotesCreate(BaseModel):
@@ -59,6 +157,10 @@ class StudyPlanCreate(BaseModel):
     notes_id: uuid.UUID | None = None
 
 
+class StudyPlanUpdate(BaseModel):
+    completed_tasks: list[str]
+
+
 class StudyPlanOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -69,6 +171,35 @@ class StudyPlanOut(BaseModel):
     plan_json: dict[str, Any]
     model: str
     created_at: datetime
+    # Populated only by the create endpoint when the user has opted into
+    # auto-scheduling AND Google Calendar is connected: one entry per plan
+    # day that successfully landed on the GradePilot calendar. Other
+    # endpoints (GET /latest, PATCH /progress) leave this as an empty list.
+    scheduled_plan_sessions: list[dict[str, Any]] = []
+
+
+StudyPlanJobStatus = Literal["queued", "running", "succeeded", "failed"]
+
+
+class StudyPlanJobCreateOut(BaseModel):
+    job_id: uuid.UUID
+
+
+class StudyPlanJobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    class_id: uuid.UUID
+    user_id: uuid.UUID
+    notes_id: uuid.UUID | None
+    status: StudyPlanJobStatus
+    phase: str
+    progress: int = Field(ge=0, le=100)
+    message: str | None = None
+    error: str | None = None
+    result_plan_id: uuid.UUID | None = None
+    created_at: datetime
+    updated_at: datetime | None = None
 
 
 class StudyPlanAIItem(BaseModel):
@@ -85,6 +216,8 @@ class StudyPlanAI(BaseModel):
 class PracticeQuestion(BaseModel):
     q: str
     a: str
+    # Which saved notes / lecture this question is grounded in (e.g. "Lecture 2").
+    source_label: str = Field(default="Class notes", min_length=1)
 
 
 class PracticeQuestionsAI(BaseModel):
@@ -92,13 +225,33 @@ class PracticeQuestionsAI(BaseModel):
 
 
 class PracticeGenerateRequest(BaseModel):
-    topic: str = Field(min_length=1, max_length=200)
     count: int = Field(default=5, ge=1, le=10)
     difficulty: Literal["Easy", "Medium", "Hard"] = "Medium"
 
 
 class PracticeGenerateOut(BaseModel):
     questions: list[PracticeQuestion]
+
+
+LearningResourceDestination = Literal["youtube", "web"]
+
+
+class LearningResourceItem(BaseModel):
+    """One suggested search the student can open on YouTube or the web."""
+
+    title: str = Field(min_length=1, max_length=200)
+    rationale: str = Field(min_length=1, max_length=800)
+    destination: LearningResourceDestination
+    search_query: str = Field(min_length=1, max_length=300)
+
+
+class LearningResourcesAI(BaseModel):
+    items: list[LearningResourceItem] = Field(min_length=5, max_length=8)
+
+
+class LearningResourcesOut(BaseModel):
+    items: list[LearningResourceItem]
+    model: str
 
 
 class SummariseRequest(BaseModel):
@@ -212,6 +365,22 @@ class DeadlineImportOut(BaseModel):
     created: int
 
 
+class SyllabusOnboardingOut(BaseModel):
+    """Result of a single syllabus upload during class onboarding (parse once, one LLM pass)."""
+
+    deadlines_created: int
+    syllabus_chunks: int
+    course_summary_chunks: int
+    course_summary_preview: str = Field(default="", max_length=500)
+    suggested_timezone: str | None = None
+    suggested_semester_start: str | None = None
+    suggested_semester_end: str | None = None
+    suggested_semester_term: str | None = Field(
+        default=None,
+        description="fall or spring when inferred from the syllabus",
+    )
+
+
 class StudyAvailabilityBlock(BaseModel):
     day: str = Field(min_length=1, max_length=20)  # e.g. Mon, Tuesday
     start_time: str = Field(min_length=1, max_length=10)  # e.g. 17:00
@@ -247,14 +416,40 @@ class StudyPlanSemesterCreate(BaseModel):
     availability: list[StudyAvailabilityBlock] | None = None
 
 
+class PreferredStudyWindow(BaseModel):
+    """A daily time window (user local time) where study sessions may land."""
+
+    start: str = Field(min_length=5, max_length=5)
+    end: str = Field(min_length=5, max_length=5)
+
+    @field_validator("start", "end")
+    @classmethod
+    def _check_hhmm(cls, v: str) -> str:
+        if not _HHMM_RE.match(v):
+            raise ValueError("time must be HH:MM in 24h format")
+        return v
+
+    @model_validator(mode="after")
+    def _check_order(self) -> "PreferredStudyWindow":
+        if _hhmm_to_minutes(self.start) >= _hhmm_to_minutes(self.end):
+            raise ValueError("start must be earlier than end")
+        return self
+
+
 class UserSettingsOut(BaseModel):
     notificationsEnabled: bool
     daysBeforeDeadline: int
     googleConnected: bool
     timezone: str | None = None
+    preferredStudyWindows: list[PreferredStudyWindow] = Field(default_factory=list)
+    autoScheduleSessions: bool = False
 
 
 class UserSettingsUpdate(BaseModel):
     notificationsEnabled: bool | None = None
     daysBeforeDeadline: int | None = Field(default=None, ge=1, le=14)
     timezone: str | None = Field(default=None, max_length=60)
+    preferredStudyWindows: list[PreferredStudyWindow] | None = Field(
+        default=None, max_length=4
+    )
+    autoScheduleSessions: bool | None = None

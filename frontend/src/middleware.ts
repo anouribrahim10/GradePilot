@@ -36,7 +36,12 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protect the core app routes.
-  if (!user && (path.startsWith('/classes') || path.startsWith('/chat'))) {
+  if (
+    !user &&
+    (path.startsWith('/classes') ||
+      path.startsWith('/chat') ||
+      path.startsWith('/integrations'))
+  ) {
     return NextResponse.redirect(new URL('/auth', request.url));
   }
 
@@ -49,5 +54,13 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/study-plan/:path*', '/classes/:path*', '/chat', '/chat/:path*', '/auth'],
+  matcher: [
+    '/dashboard/:path*',
+    '/study-plan/:path*',
+    '/classes/:path*',
+    '/chat',
+    '/chat/:path*',
+    '/auth',
+    '/integrations/:path*',
+  ],
 };

@@ -88,6 +88,29 @@ export async function backendFetch<T>(
   return body as T;
 }
 
+export type MeetingPattern = {
+  weekdays: number[];
+  start_time: string;
+  end_time: string;
+};
+
+export type PreferredStudyWindow = {
+  start: string;
+  end: string;
+};
+
+export type GradeBookState = {
+  components: {
+    id: string;
+    name: string;
+    weight_percent: number;
+    score_percent: number | null;
+  }[];
+  pass_percent: number;
+  target_percent: number;
+  letter_cutoffs: { letter: string; min_percent: number }[];
+};
+
 export type ClassOut = {
   id: string;
   user_id: string;
@@ -96,6 +119,8 @@ export type ClassOut = {
   semester_end?: string | null;
   timezone?: string | null;
   availability_json?: Record<string, unknown> | null;
+  meeting_pattern?: MeetingPattern | null;
+  grade_book?: GradeBookState | null;
   created_at: string;
 };
 
@@ -107,6 +132,7 @@ export type ClassSummaryOut = {
   next_deadline_due_at: string | null;
   latest_study_plan_id: string | null;
   latest_study_plan_created_at: string | null;
+  has_indexed_syllabus: boolean;
 };
 
 export type NotesOut = {
@@ -137,17 +163,40 @@ export type StudyPlanOut = {
     title: string;
     goals: string[];
     schedule: { day: string; tasks: string[] }[];
+    completed_tasks?: string[];
   };
   model: string;
   created_at: string;
+  scheduled_plan_sessions?: ScheduledPlanSession[];
 };
 
-export type PracticeQuestion = { q: string; a: string };
+export type PracticeQuestion = { q: string; a: string; source_label?: string };
 
-export function generatePractice(classId: string, topic: string, count: number, difficulty: string) {
+export type LearningResourceDestination = 'youtube' | 'web';
+
+export type LearningResourceItemOut = {
+  title: string;
+  rationale: string;
+  destination: LearningResourceDestination;
+  search_query: string;
+};
+
+export type LearningResourcesOut = {
+  items: LearningResourceItemOut[];
+  model: string;
+};
+
+export function fetchLearningResources(classId: string) {
+  return backendFetch<LearningResourcesOut>(`/classes/${classId}/learning-resources`, {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+export function generatePractice(classId: string, count: number, difficulty: string) {
   return backendFetch<{ questions: PracticeQuestion[] }>(`/classes/${classId}/practice`, {
     method: 'POST',
-    body: JSON.stringify({ topic, count, difficulty }),
+    body: JSON.stringify({ count, difficulty }),
   });
 }
 
@@ -164,6 +213,13 @@ export function createClass(title: string) {
 
 export function getClassSummary(classId: string) {
   return backendFetch<ClassSummaryOut>(`/classes/${classId}`);
+}
+
+export function updateClassGradeBook(classId: string, body: GradeBookState) {
+  return backendFetch<GradeBookState>(`/classes/${classId}/grade-book`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
 }
 
 export function addNotes(classId: string, notes_text: string) {
@@ -184,6 +240,38 @@ export function createStudyPlan(classId: string, notesId?: string) {
   });
 }
 
+export type StudyPlanJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+export type StudyPlanJobCreateOut = {
+  job_id: string;
+};
+
+export type StudyPlanJobOut = {
+  id: string;
+  class_id: string;
+  user_id: string;
+  notes_id: string | null;
+  status: StudyPlanJobStatus;
+  phase: string;
+  progress: number;
+  message: string | null;
+  error: string | null;
+  result_plan_id: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export function startStudyPlanJob(classId: string, notesId?: string) {
+  return backendFetch<StudyPlanJobCreateOut>(`/classes/${classId}/study-plan/jobs`, {
+    method: 'POST',
+    body: JSON.stringify({ notes_id: notesId ?? null }),
+  });
+}
+
+export function getStudyPlanJob(jobId: string) {
+  return backendFetch<StudyPlanJobOut>(`/classes/study-plan/jobs/${jobId}`);
+}
+
 export function createSemesterStudyPlan(
   classId: string,
   payload: {
@@ -201,6 +289,13 @@ export function createSemesterStudyPlan(
 
 export function getLatestStudyPlan(classId: string) {
   return backendFetch<StudyPlanOut>(`/classes/${classId}/study-plan/latest`);
+}
+
+export function updateStudyPlanProgress(classId: string, planId: string, completed_tasks: string[]) {
+  return backendFetch<StudyPlanOut>(`/classes/${classId}/study-plan/${planId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ completed_tasks }),
+  });
 }
 
 export function listDeadlines(classId: string) {
@@ -225,6 +320,50 @@ export function updateDeadline(classId: string, deadlineId: string, payload: { c
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
+}
+
+export type SyllabusOnboardingOut = {
+  deadlines_created: number;
+  syllabus_chunks: number;
+  course_summary_chunks: number;
+  course_summary_preview: string;
+  suggested_timezone: string | null;
+  suggested_semester_start: string | null;
+  suggested_semester_end: string | null;
+  suggested_semester_term: string | null;
+};
+
+/** Single syllabus upload: deadlines + suggested term dates + RAG (syllabus + course summary). */
+export async function uploadOnboardingSyllabus(
+  classId: string,
+  file: File,
+  chatSessionId: string
+): Promise<SyllabusOnboardingOut> {
+  const token = await getAccessToken();
+  const body = new FormData();
+  body.append('file', file, file.name);
+  body.append('chat_session_id', chatSessionId);
+  const res = await fetch(`${BACKEND_URL}/classes/${classId}/onboarding/syllabus`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body,
+  });
+  const contentType = res.headers.get('content-type') ?? '';
+  const parsed = contentType.includes('application/json')
+    ? await res.json().catch(() => null)
+    : await res.text().catch(() => null);
+  if (!res.ok) {
+    const message =
+      (parsed &&
+        typeof parsed === 'object' &&
+        'detail' in parsed &&
+        String((parsed as ErrorBody)?.detail ?? '')) ||
+      `Request failed (${res.status})`;
+    throw new BackendError(String(message), res.status, parsed);
+  }
+  return parsed as SyllabusOnboardingOut;
 }
 
 export function importDeadlinesFromSyllabus(classId: string, file: File) {
@@ -256,6 +395,46 @@ export function importDeadlinesFromSyllabus(classId: string, file: File) {
   })();
 }
 
+export type GoogleOAuthStartOut = {
+  authorization_url: string;
+  state?: string;
+  code_verifier?: string;
+};
+
+/** Returns the Google consent URL. Redirect the browser to `authorization_url`. */
+export function startGoogleCalendarOAuth() {
+  return backendFetch<GoogleOAuthStartOut>('/integrations/google/oauth/start');
+}
+
+/** Exchange OAuth `code` after Google redirects back (requires an authenticated session). */
+export function completeGoogleCalendarOAuth(
+  code: string,
+  state?: string | null,
+  code_verifier?: string | null
+) {
+  const q = new URLSearchParams({ code });
+  if (state) q.set('state', state);
+  if (code_verifier) q.set('code_verifier', code_verifier);
+  return backendFetch<{ ok: boolean }>(`/integrations/google/oauth/callback?${q.toString()}`);
+}
+
+/** Push this class’s deadlines to the user’s GradePilot Google Calendar. */
+export function syncClassToGoogleCalendar(classId: string) {
+  return backendFetch<{ created: number }>(
+    `/integrations/google/calendar/sync/${encodeURIComponent(classId)}`,
+    { method: 'POST' }
+  );
+}
+
+export type GoogleCalendarInfoOut = {
+  calendar_id: string;
+  primary_calendar_id?: string | null;
+};
+
+export function getGoogleCalendarInfo() {
+  return backendFetch<GoogleCalendarInfoOut>('/integrations/google/calendar');
+}
+
 export type SummariseOut = {
   title: string;
   summary: string;
@@ -276,6 +455,8 @@ export type UserSettingsOut = {
   daysBeforeDeadline: number;
   googleConnected: boolean;
   timezone: string | null;
+  preferredStudyWindows: PreferredStudyWindow[];
+  autoScheduleSessions: boolean;
 };
 
 export function getUserSettings() {
@@ -286,6 +467,88 @@ export function updateUserSettings(payload: Partial<UserSettingsOut>) {
   return backendFetch<UserSettingsOut>('/settings', {
     method: 'PUT',
     body: JSON.stringify(payload),
+  });
+}
+
+export type ClassTimelineUpdatePayload = {
+  semester_start?: string | null;
+  semester_end?: string | null;
+  timezone?: string | null;
+  availability?:
+    | { day: string; start_time: string; end_time: string }[]
+    | null;
+  meeting_pattern?: MeetingPattern | null;
+};
+
+export function updateClassTimeline(
+  classId: string,
+  payload: ClassTimelineUpdatePayload
+) {
+  return backendFetch<ClassOut>(`/classes/${classId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export type ScheduledSession = {
+  start: string;
+  end: string;
+  in_preferred_window: boolean;
+  calendar_event_link: string;
+  calendar_event_id: string;
+  anchor_kind: 'next_lecture' | 'next_deadline' | 'fallback';
+};
+
+export type ScheduledPlanSession = {
+  day_index: number;
+  day_label: string;
+  tasks: string[];
+  start: string;
+  end: string;
+  in_preferred_window: boolean;
+  calendar_event_link: string;
+  calendar_event_id: string;
+};
+
+export type ReplannerOut = {
+  should_replan: boolean | null;
+  replan_reason: string | null;
+  change_signals: Record<string, unknown> | null;
+  new_plan_id: string | null;
+  new_plan: Record<string, unknown> | null;
+  calendar_sync_result: Record<string, unknown> | null;
+  scheduled_session: ScheduledSession | null;
+  scheduled_plan_sessions: ScheduledPlanSession[];
+  errors: string[];
+};
+
+export type ReplannerTrigger =
+  | 'onboarding'
+  | 'deadline_imported'
+  | 'deadline_added'
+  | 'notes_added'
+  | 'progress_updated'
+  | 'manual_replan';
+
+export function runReplanner(
+  classId: string,
+  payload: {
+    trigger: ReplannerTrigger;
+    dry_run?: boolean;
+    force_replan?: boolean;
+    sync_calendar_override?: boolean | null;
+    force_schedule_session?: boolean;
+  }
+) {
+  return backendFetch<ReplannerOut>(`/classes/${classId}/replan`, {
+    method: 'POST',
+    body: JSON.stringify({
+      dry_run: false,
+      force_replan: false,
+      sync_calendar_override: null,
+      force_schedule_session: false,
+      ...payload,
+    }),
   });
 }
 
@@ -341,8 +604,9 @@ export type ChatReplyOut = {
   next_url?: string | null;
 };
 
-export function createOrGetChatSession() {
-  return backendFetch<ChatSessionOut>('/chat/sessions', { method: 'POST' });
+export function createOrGetChatSession(opts?: { forceNew?: boolean }) {
+  const qs = opts?.forceNew ? '?force_new=true' : '';
+  return backendFetch<ChatSessionOut>(`/chat/sessions${qs}`, { method: 'POST' });
 }
 
 export function getChatSession(sessionId: string) {

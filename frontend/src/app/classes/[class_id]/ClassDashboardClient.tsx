@@ -6,24 +6,36 @@ import {
   addNotes,
   askClass,
   createDeadline,
-  createStudyPlan,
   deleteDeadline,
   extractPdfText,
   generatePractice,
   getClassNotes,
   getClassSummary,
   getLatestStudyPlan,
+  getStudyPlanJob,
+  getGoogleCalendarInfo,
+  getUserSettings,
   listDeadlines,
+  runReplanner,
+  syncClassToGoogleCalendar,
+  startStudyPlanJob,
   summariseDocument,
+  updateClassTimeline,
   updateDeadline,
+  updateUserSettings,
+  updateStudyPlanProgress,
   uploadMaterialPdf,
   uploadMaterialText,
   type ClassAskOut,
   type ClassSummaryOut,
   type DeadlineOut,
   type MaterialIngestOut,
+  type MeetingPattern,
   type NotesOut,
   type PracticeQuestion,
+  type ScheduledPlanSession,
+  type ScheduledSession,
+  type StudyPlanJobOut,
   type StudyPlanOut,
   type SummariseOut,
 } from '@/lib/backend';
@@ -33,6 +45,7 @@ import { NotesPanel } from '@/components/study-plan/NotesPanel';
 import { PracticePanel } from '@/components/study-plan/PracticePanel';
 import { RagPanel } from '@/components/study-plan/RagPanel';
 import { PlanPanel } from '@/components/study-plan/PlanPanel';
+import { LearningResourcesPanel } from '@/components/study-plan/LearningResourcesPanel';
 
 type Tab = 'overview' | 'deadlines' | 'notes' | 'practice';
 
@@ -68,12 +81,13 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
   const [notesSummary, setNotesSummary] = useState<SummariseOut | null>(null);
   const [summarising, setSummarising] = useState(false);
   const [lastUpload, setLastUpload] = useState<{ filename: string; text: string } | null>(null);
+  const [uploadingNotes, setUploadingNotes] = useState(false);
+  const [uploadingNotesLabel, setUploadingNotesLabel] = useState<string | null>(null);
 
   const [deadlines, setDeadlines] = useState<DeadlineOut[] | null>(null);
   const [deadlineTitle, setDeadlineTitle] = useState('');
   const [deadlineDue, setDeadlineDue] = useState('');
 
-  const [practiceTopic, setPracticeTopic] = useState('');
   const [practiceCount, setPracticeCount] = useState(5);
   const [practiceDifficulty, setPracticeDifficulty] = useState<'Easy' | 'Medium' | 'Hard'>(
     'Medium'
@@ -81,6 +95,8 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
   const [practice, setPractice] = useState<PracticeQuestion[] | null>(null);
 
   const [plan, setPlan] = useState<StudyPlanOut | null>(null);
+  const [planJob, setPlanJob] = useState<StudyPlanJobOut | null>(null);
+  const [generatingPlan, setGeneratingPlan] = useState(false);
 
   const [ragIngestResult, setRagIngestResult] = useState<MaterialIngestOut | null>(null);
   const [ragAskResult, setRagAskResult] = useState<ClassAskOut | null>(null);
@@ -88,10 +104,42 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
   const [ragUploadDocType, setRagUploadDocType] = useState('reading');
   const [ragAskDocFilter, setRagAskDocFilter] = useState('');
   const [ragPasteToIndex, setRagPasteToIndex] = useState('');
+  const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
+  const [googleSyncBusy, setGoogleSyncBusy] = useState(false);
+  const [calendarSyncHint, setCalendarSyncHint] = useState<string | null>(null);
+  const [calendarId, setCalendarId] = useState<string | null>(null);
+  const [primaryCalendarId, setPrimaryCalendarId] = useState<string | null>(
+    null
+  );
+
+  const [autoSchedule, setAutoSchedule] = useState<boolean>(false);
+  const [savingAutoSchedule, setSavingAutoSchedule] = useState<boolean>(false);
+
+  const [meetingPatternDraft, setMeetingPatternDraft] =
+    useState<MeetingPattern>({
+      weekdays: [],
+      start_time: '14:00',
+      end_time: '15:30',
+    });
+  const [savingMeetingPattern, setSavingMeetingPattern] = useState(false);
+  const [meetingPatternHint, setMeetingPatternHint] = useState<string | null>(
+    null
+  );
+
+  const [lastScheduledSession, setLastScheduledSession] =
+    useState<ScheduledSession | null>(null);
+  const [lastPlanSessions, setLastPlanSessions] = useState<
+    ScheduledPlanSession[]
+  >([]);
+  const [autoSchedulingBusy, setAutoSchedulingBusy] = useState(false);
+  const [autoSchedulingHint, setAutoSchedulingHint] = useState<string | null>(
+    null
+  );
 
   const classTitle = summary?.clazz?.title ?? 'Class';
 
   useEffect(() => {
+    const controller = new AbortController();
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -100,10 +148,41 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
         const s = await getClassSummary(classId);
         if (cancelled) return;
         setSummary(s);
-        const [n, d] = await Promise.all([getClassNotes(classId), listDeadlines(classId)]);
+        const [n, d, settings] = await Promise.all([
+          getClassNotes(classId),
+          listDeadlines(classId),
+          getUserSettings(),
+        ]);
         if (cancelled) return;
         setNotes(n);
         setDeadlines(d);
+        setGoogleConnected(settings.googleConnected);
+        setAutoSchedule(Boolean(settings.autoScheduleSessions));
+        if (s.clazz.meeting_pattern) {
+          setMeetingPatternDraft({
+            weekdays: s.clazz.meeting_pattern.weekdays ?? [],
+            start_time: s.clazz.meeting_pattern.start_time ?? '14:00',
+            end_time: s.clazz.meeting_pattern.end_time ?? '15:30',
+          });
+        }
+        if (settings.googleConnected) {
+          try {
+            const info = await getGoogleCalendarInfo();
+            if (!cancelled) {
+              setCalendarId(info.calendar_id);
+              setPrimaryCalendarId(info.primary_calendar_id ?? null);
+            }
+          } catch {
+            // Calendar embed is optional; ignore failures.
+            if (!cancelled) {
+              setCalendarId(null);
+              setPrimaryCalendarId(null);
+            }
+          }
+        } else {
+          setCalendarId(null);
+          setPrimaryCalendarId(null);
+        }
         if (s.latest_study_plan_id) {
           const latest = await getLatestStudyPlan(classId);
           if (!cancelled) setPlan(latest);
@@ -119,8 +198,99 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
     })();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [classId]);
+
+  useEffect(() => {
+    if (tab !== 'overview') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await getClassSummary(classId);
+        if (!cancelled) setSummary(s);
+      } catch {
+        /* keep existing summary on refresh failure */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, classId]);
+
+  async function persistAutoSchedule(next: boolean): Promise<void> {
+    setSavingAutoSchedule(true);
+    try {
+      const updated = await updateUserSettings({ autoScheduleSessions: next });
+      setAutoSchedule(Boolean(updated.autoScheduleSessions));
+    } catch (e: unknown) {
+      setError(
+        e instanceof Error ? e.message : 'Failed to save auto-schedule setting'
+      );
+    } finally {
+      setSavingAutoSchedule(false);
+    }
+  }
+
+  function explainSchedulingErrors(errors: string[]): string | null {
+    for (const e of errors) {
+      if (e.includes('skip:no_google_integration'))
+        return 'Connect Google Calendar from the Classes page to enable scheduling.';
+      if (e.includes('skip:insufficient_scopes'))
+        return 'Reconnect Google Calendar — required calendar permissions are missing.';
+      if (e.includes('skip:no_notes'))
+        return 'Add or upload notes for this class first.';
+      if (e.includes('skip:anchor_in_past'))
+        return 'No upcoming lecture or deadline to anchor against. Add a deadline or set a meeting pattern.';
+      if (e.includes('skip:no_slot_found'))
+        return 'No free 60-minute slot found before the next lecture/deadline. Try widening your preferred study windows.';
+      if (e.startsWith('schedule_plan_sessions_'))
+        return 'Some plan days could not be booked (no free slot). Widen your preferred study windows or clear time on your calendar.';
+      if (e.includes('schedule_study_session_'))
+        return 'Could not schedule a session. Try again, or check Google Calendar access.';
+    }
+    return null;
+  }
+
+  async function triggerScheduling(opts: { manual: boolean }): Promise<void> {
+    setAutoSchedulingBusy(true);
+    setAutoSchedulingHint(null);
+    try {
+      const result = await runReplanner(classId, {
+        trigger: opts.manual ? 'manual_replan' : 'notes_added',
+        force_schedule_session: opts.manual,
+      });
+      setLastScheduledSession(result.scheduled_session);
+      if (result.scheduled_plan_sessions) {
+        setLastPlanSessions(result.scheduled_plan_sessions);
+      }
+      if (
+        result.scheduled_session ||
+        (result.scheduled_plan_sessions ?? []).length > 0
+      ) {
+        setAutoSchedulingHint(null);
+        return;
+      }
+      const friendly = explainSchedulingErrors(result.errors ?? []);
+      if (friendly) {
+        setAutoSchedulingHint(friendly);
+      } else if (opts.manual) {
+        setAutoSchedulingHint(
+          'No session was scheduled. Check meeting pattern, deadlines, and preferred study windows.'
+        );
+      } else if (autoSchedule && googleConnected !== true) {
+        setAutoSchedulingHint(
+          'Auto-schedule is on but Google Calendar is not connected yet.'
+        );
+      }
+    } catch (e: unknown) {
+      setAutoSchedulingHint(
+        e instanceof Error ? e.message : 'Could not run smart scheduling.'
+      );
+    } finally {
+      setAutoSchedulingBusy(false);
+    }
+  }
 
   const upcomingDeadlines = useMemo(() => {
     const all = deadlines ?? [];
@@ -220,11 +390,395 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
               </div>
             </div>
           </div>
+
+          <LearningResourcesPanel
+            classId={classId}
+            classTitle={classTitle}
+            hasNotes={Boolean(notes && notes.length > 0)}
+            onOpenNotesTab={() => setTab('notes')}
+          />
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-white">
+                  Lecture meeting pattern
+                </div>
+                <p className="mt-1 text-sm text-slate-300 max-w-xl">
+                  Tell GradePilot when this class meets. Smart scheduling will
+                  use the next lecture as the deadline for your study session.
+                </p>
+              </div>
+              {meetingPatternHint ? (
+                <span className="text-xs text-emerald-400">
+                  {meetingPatternHint}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const).map(
+                (label, idx) => {
+                  const active = meetingPatternDraft.weekdays.includes(idx);
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => {
+                        setMeetingPatternDraft((p) => ({
+                          ...p,
+                          weekdays: active
+                            ? p.weekdays.filter((d) => d !== idx)
+                            : [...p.weekdays, idx].sort(),
+                        }));
+                      }}
+                      className={[
+                        'rounded-lg px-2.5 py-1 text-xs font-semibold border',
+                        active
+                          ? 'border-white/30 bg-white text-black'
+                          : 'border-white/15 bg-black/20 text-slate-200 hover:bg-white/[0.06]',
+                      ].join(' ')}
+                    >
+                      {label}
+                    </button>
+                  );
+                }
+              )}
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+              <span>From</span>
+              <input
+                value={meetingPatternDraft.start_time}
+                onChange={(e) =>
+                  setMeetingPatternDraft((p) => ({
+                    ...p,
+                    start_time: e.target.value,
+                  }))
+                }
+                placeholder="14:00"
+                className="w-20 bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-sm text-white"
+              />
+              <span>to</span>
+              <input
+                value={meetingPatternDraft.end_time}
+                onChange={(e) =>
+                  setMeetingPatternDraft((p) => ({
+                    ...p,
+                    end_time: e.target.value,
+                  }))
+                }
+                placeholder="15:30"
+                className="w-20 bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-sm text-white"
+              />
+              <button
+                type="button"
+                disabled={
+                  savingMeetingPattern ||
+                  meetingPatternDraft.weekdays.length === 0
+                }
+                onClick={async () => {
+                  setSavingMeetingPattern(true);
+                  setMeetingPatternHint(null);
+                  setError(null);
+                  try {
+                    await updateClassTimeline(classId, {
+                      meeting_pattern: meetingPatternDraft,
+                    });
+                    setMeetingPatternHint('Saved.');
+                  } catch (e: unknown) {
+                    setError(
+                      e instanceof Error ? e.message : 'Failed to save pattern'
+                    );
+                  } finally {
+                    setSavingMeetingPattern(false);
+                  }
+                }}
+                className="ml-1 rounded-xl bg-white text-black px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+              >
+                {savingMeetingPattern ? 'Saving…' : 'Save pattern'}
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-white">
+                  Study session
+                </div>
+                <p className="mt-1 text-sm text-slate-300 max-w-xl">
+                  Books a 60-minute focused-study event on your GradePilot
+                  Google calendar before your next lecture or deadline.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={autoSchedulingBusy || googleConnected !== true}
+                onClick={() => triggerScheduling({ manual: true })}
+                className="rounded-xl border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                {autoSchedulingBusy ? 'Scheduling…' : 'Schedule study session now'}
+              </button>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+              <label className="inline-flex items-center gap-2 text-sm text-white">
+                <input
+                  type="checkbox"
+                  checked={autoSchedule}
+                  disabled={
+                    savingAutoSchedule || googleConnected !== true
+                  }
+                  onChange={(e) => persistAutoSchedule(e.target.checked)}
+                />
+                Auto-schedule on every notes upload
+              </label>
+              {googleConnected !== true ? (
+                <span className="text-xs text-amber-200/90">
+                  Connect Google from{' '}
+                  <Link href="/classes" className="underline hover:text-white">
+                    Classes
+                  </Link>{' '}
+                  first.
+                </span>
+              ) : (
+                <Link
+                  href="/classes"
+                  className="ml-auto text-xs text-slate-300 hover:text-white underline"
+                >
+                  Edit preferred study windows →
+                </Link>
+              )}
+            </div>
+
+            {lastScheduledSession ? (
+              <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="text-sm font-semibold text-white">
+                  {new Date(lastScheduledSession.start).toLocaleString()} →{' '}
+                  {new Date(lastScheduledSession.end).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </div>
+                <div className="mt-1 text-xs text-slate-300">
+                  Anchor:{' '}
+                  {lastScheduledSession.anchor_kind.replace('_', ' ')}
+                  {lastScheduledSession.in_preferred_window
+                    ? ' · in your preferred window'
+                    : ' · outside your preferred windows (best slot available)'}
+                </div>
+                {lastScheduledSession.calendar_event_link ? (
+                  <a
+                    href={lastScheduledSession.calendar_event_link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-block text-xs text-slate-200 hover:text-white underline"
+                  >
+                    Open in Google Calendar
+                  </a>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-3 text-sm text-slate-300">
+                No session booked yet. Click <em>Schedule study session now</em>,
+                or enable auto-schedule on the Classes page so it runs after
+                every notes upload.
+              </div>
+            )}
+
+            {lastPlanSessions.length > 0 ? (
+              <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-300">
+                  Plan day blocks ({lastPlanSessions.length} on calendar)
+                </div>
+                <div className="mt-2 space-y-2">
+                  {lastPlanSessions.map((s) => (
+                    <div
+                      key={s.day_index}
+                      className="rounded-lg border border-white/10 bg-black/30 p-2"
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <div className="text-sm font-semibold text-white">
+                          {s.day_label}
+                        </div>
+                        <div className="text-xs text-slate-300">
+                          {new Date(s.start).toLocaleString([], {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}{' '}
+                          →{' '}
+                          {new Date(s.end).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                          {s.in_preferred_window ? '' : ' · best available'}
+                        </div>
+                      </div>
+                      {s.tasks.length > 0 ? (
+                        <ul className="mt-1 list-disc list-inside text-xs text-slate-300 space-y-0.5">
+                          {s.tasks.slice(0, 3).map((t, i) => (
+                            <li key={i} className="truncate">{t}</li>
+                          ))}
+                          {s.tasks.length > 3 ? (
+                            <li className="text-slate-400">
+                              +{s.tasks.length - 3} more
+                            </li>
+                          ) : null}
+                        </ul>
+                      ) : null}
+                      {s.calendar_event_link ? (
+                        <a
+                          href={s.calendar_event_link}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 inline-block text-xs text-slate-200 hover:text-white underline"
+                        >
+                          Open in Google Calendar
+                        </a>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {autoSchedulingHint ? (
+              <p className="mt-2 text-xs text-amber-200/90">
+                {autoSchedulingHint}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <div className="text-sm font-semibold text-white">Calendar</div>
+                <p className="mt-1 text-sm text-slate-300">
+                  Your GradePilot deadlines calendar in Google Calendar.
+                </p>
+              </div>
+              {calendarId ? (
+                <a
+                  className="text-sm text-slate-300 hover:text-white underline"
+                  href={`https://calendar.google.com/calendar/u/0/r?cid=${encodeURIComponent(
+                    calendarId
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open in Google Calendar
+                </a>
+              ) : null}
+            </div>
+
+            {googleConnected !== true ? (
+              <p className="mt-3 text-sm text-amber-200/90">
+                Connect Google Calendar from{' '}
+                <Link href="/classes" className="underline hover:text-white">
+                  Classes
+                </Link>{' '}
+                to see your calendar here.
+              </p>
+            ) : calendarId ? (
+              (() => {
+                const browserTz =
+                  typeof Intl !== 'undefined'
+                    ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+                    : 'UTC';
+                const params = new URLSearchParams();
+                params.append('src', calendarId);
+                if (primaryCalendarId) {
+                  params.append('src', primaryCalendarId);
+                }
+                params.append('ctz', browserTz);
+                params.append('mode', 'WEEK');
+                return (
+                  <>
+                    <div className="mt-4 rounded-xl overflow-hidden border border-white/10 bg-black/20">
+                      <iframe
+                        title="GradePilot calendar"
+                        className="w-full h-[600px]"
+                        src={`https://calendar.google.com/calendar/embed?${params.toString()}`}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-slate-400">
+                      Showing the GradePilot calendar
+                      {primaryCalendarId
+                        ? ' overlaid with your primary Google calendar'
+                        : ''}
+                      , in {browserTz}. Other calendars (work, shared, etc.)
+                      stay private to this embed — open Google Calendar to see
+                      them all.
+                    </p>
+                  </>
+                );
+              })()
+            ) : (
+              <p className="mt-3 text-sm text-slate-300">
+                Calendar connected, but embed is not available yet. Try syncing deadlines first.
+              </p>
+            )}
+          </div>
         </div>
       ) : null}
 
       {tab === 'deadlines' ? (
         <section className="space-y-4">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-white">Google Calendar</div>
+                <p className="mt-1 text-xs text-slate-400 max-w-xl">
+                  Push this class&apos;s deadlines to your GradePilot calendar (create or update events).
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={
+                  googleSyncBusy ||
+                  googleConnected !== true ||
+                  (deadlines ?? []).length === 0
+                }
+                onClick={async () => {
+                  setGoogleSyncBusy(true);
+                  setError(null);
+                  setCalendarSyncHint(null);
+                  try {
+                    const { created } = await syncClassToGoogleCalendar(classId);
+                    setCalendarSyncHint(
+                      created === 0
+                        ? 'No deadlines to sync.'
+                        : `Updated ${created} deadline event${created === 1 ? '' : 's'} in Google Calendar.`
+                    );
+                  } catch (err: unknown) {
+                    setError(err instanceof Error ? err.message : 'Calendar sync failed');
+                  } finally {
+                    setGoogleSyncBusy(false);
+                  }
+                }}
+                className="shrink-0 rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {googleSyncBusy ? 'Syncing…' : 'Sync to Google Calendar'}
+              </button>
+            </div>
+            {googleConnected === false ? (
+              <p className="text-xs text-amber-200/90">
+                Connect Google from{' '}
+                <Link href="/classes" className="underline hover:text-white">
+                  Classes
+                </Link>{' '}
+                first.
+              </p>
+            ) : null}
+            {calendarSyncHint ? (
+              <p className="text-xs text-emerald-400">{calendarSyncHint}</p>
+            ) : null}
+          </div>
+
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
             <div className="text-sm font-semibold text-white">Deadlines</div>
             <div className="space-y-2">
@@ -336,11 +890,18 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
             notesDraft={notesDraft}
             onNotesDraftChange={setNotesDraft}
             loading={loading}
+            uploading={uploadingNotes}
+            uploadingLabel={uploadingNotesLabel}
             summarising={summarising}
             notesSummary={notesSummary}
             onUploadFiles={async (files) => {
               setError(null);
-              setLoading(true);
+              setUploadingNotes(true);
+              setUploadingNotesLabel(
+                files.some((f) => f.name.toLowerCase().endsWith('.pdf'))
+                  ? 'Extracting PDF…'
+                  : 'Reading files…'
+              );
               setNotesSummary(null);
               try {
                 const { filename, text } = await filesToText(files);
@@ -348,10 +909,12 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
                 const created = await addNotes(classId, text.trim());
                 setNotes((prev) => [created, ...(prev ?? [])]);
                 setNotesDraft('');
+                void triggerScheduling({ manual: false });
               } catch (err: unknown) {
                 setError(err instanceof Error ? err.message : 'Failed to upload notes');
               } finally {
-                setLoading(false);
+                setUploadingNotes(false);
+                setUploadingNotesLabel(null);
               }
             }}
             onSummariseNotes={async () => {
@@ -379,6 +942,7 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
                 setNotesDraft('');
                 setNotesSummary(null);
                 setLastUpload(null);
+                void triggerScheduling({ manual: false });
               } catch (e: unknown) {
                 setError(e instanceof Error ? e.message : 'Failed to save notes');
               } finally {
@@ -449,31 +1013,90 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
           <PlanPanel
             hasNotes={Boolean(notes && notes.length > 0)}
             plan={plan}
-            loading={loading}
+            loading={generatingPlan}
+            onToggleTask={async (taskText, completed) => {
+              if (!plan) return;
+              const currentCompleted = plan.plan_json.completed_tasks ?? [];
+              let newCompleted: string[];
+              if (completed) {
+                newCompleted = [...currentCompleted, taskText];
+              } else {
+                newCompleted = currentCompleted.filter(t => t !== taskText);
+              }
+              setPlan({
+                ...plan,
+                plan_json: { ...plan.plan_json, completed_tasks: newCompleted },
+              });
+              try {
+                await updateStudyPlanProgress(classId, plan.id, newCompleted);
+              } catch (e: unknown) {
+                setError(e instanceof Error ? e.message : 'Failed to update progress');
+                setPlan(plan);
+              }
+            }}
             onGenerate={async () => {
-              setLoading(true);
+              setGeneratingPlan(true);
               setError(null);
+              setPlanJob(null);
               try {
                 const latestNotesId = notes?.[0]?.id;
-                const created = await createStudyPlan(classId, latestNotesId);
-                setPlan(created);
+                const { job_id } = await startStudyPlanJob(
+                  classId,
+                  latestNotesId ?? undefined
+                );
+
+                const startedAt = Date.now();
+                const timeoutMs = 2 * 60 * 1000;
+                // eslint-disable-next-line no-constant-condition
+                while (true) {
+                  const job = await getStudyPlanJob(job_id);
+                  setPlanJob(job);
+                  if (job.status === 'succeeded') break;
+                  if (job.status === 'failed') {
+                    throw new Error(job.error || 'Study plan generation failed');
+                  }
+                  if (Date.now() - startedAt > timeoutMs) {
+                    throw new Error(
+                      'Study plan is still running. Please check back in a moment.'
+                    );
+                  }
+                  await new Promise((r) => setTimeout(r, 1200));
+                }
+
+                const latest = await getLatestStudyPlan(classId);
+                setPlan(latest);
               } catch (e: unknown) {
                 setError(e instanceof Error ? e.message : 'Failed to generate plan');
               } finally {
-                setLoading(false);
+                setGeneratingPlan(false);
               }
             }}
           />
+          {planJob && planJob.status !== 'succeeded' ? (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="text-sm font-semibold text-white">Generating plan</div>
+              <div className="mt-2 text-sm text-slate-300">
+                {planJob.message || planJob.phase}
+              </div>
+              <div className="mt-3 h-2 rounded-full bg-white/10 overflow-hidden">
+                <div
+                  className="h-full bg-indigo-500 transition-all duration-500"
+                  style={{
+                    width: `${Math.max(2, Math.min(100, planJob.progress || 0))}%`,
+                  }}
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       {tab === 'practice' ? (
         <PracticePanel
           hasNotes={Boolean(notes && notes.length > 0)}
-          practiceTopic={practiceTopic}
+          lectureCount={notes?.length ?? 0}
           practiceCount={practiceCount}
           practiceDifficulty={practiceDifficulty}
-          onPracticeTopicChange={setPracticeTopic}
           onPracticeCountChange={setPracticeCount}
           onPracticeDifficultyChange={setPracticeDifficulty}
           loading={loading}
@@ -482,7 +1105,7 @@ export default function ClassDashboardClient({ classId }: { classId: string }) {
             setLoading(true);
             setError(null);
             try {
-              const res = await generatePractice(classId, practiceTopic.trim(), practiceCount, practiceDifficulty);
+              const res = await generatePractice(classId, practiceCount, practiceDifficulty);
               setPractice(res.questions);
             } catch (e: unknown) {
               setError(e instanceof Error ? e.message : 'Failed to generate practice');

@@ -1,4 +1,7 @@
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
+
+const AuthRedirect = dynamic(() => import('./AuthRedirect'), { ssr: false });
 
 export default function LandingPage() {
   return (
@@ -36,12 +39,7 @@ export default function LandingPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link href="/auth" className="gp-btn-ghost">
-              Sign In
-            </Link>
-            <Link href="/auth" className="gp-btn">
-              Get Started
-            </Link>
+            <AuthRedirect />
           </div>
         </nav>
       </div>
