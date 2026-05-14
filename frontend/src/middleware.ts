@@ -59,6 +59,7 @@ export const config = {
     '/study-plan/:path*',
     '/classes/:path*',
     '/chat',
+    '/chat/:path*',
     '/auth',
     '/integrations/:path*',
   ],
