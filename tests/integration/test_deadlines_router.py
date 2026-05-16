@@ -17,7 +17,7 @@ from app.main import app
 
 
 @pytest.fixture()
-def client_and_db() -> Generator[tuple[TestClient, sessionmaker], None, None]:
+def client_and_db() -> Generator[tuple[TestClient, sessionmaker[Session]], None, None]:
     engine = create_engine(
         "sqlite+pysqlite://",
         connect_args={"check_same_thread": False},
@@ -48,7 +48,7 @@ def client_and_db() -> Generator[tuple[TestClient, sessionmaker], None, None]:
 
 
 def test_create_deadline_persists_parsed_due_at(
-    client_and_db: tuple[TestClient, sessionmaker],
+    client_and_db: tuple[TestClient, sessionmaker[Session]],
 ) -> None:
     client, SessionLocal = client_and_db
 
@@ -79,7 +79,7 @@ def test_create_deadline_persists_parsed_due_at(
 
 
 def test_create_deadline_with_invalid_due_persists_with_null_due_at(
-    client_and_db: tuple[TestClient, sessionmaker],
+    client_and_db: tuple[TestClient, sessionmaker[Session]],
 ) -> None:
     client, SessionLocal = client_and_db
 
